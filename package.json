@@ -34,7 +34,6 @@
     "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "prisma": "^7.8.0",
     "@eslint/eslintrc": "^3",
     "@playwright/test": "^1.61.1",
     "@storybook/nextjs": "^10.4.6",
@@ -54,6 +53,7 @@
     "jsdom": "^29.1.1",
     "prettier": "^3.9.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "prisma": "^7.8.0",
     "storybook": "^10.4.6",
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
