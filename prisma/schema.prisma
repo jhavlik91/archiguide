@@ -1,0 +1,47 @@
+// ===========================================================================
+// ArchiGuide — Prisma schema
+//
+// Schema je členěno komentářovými sekcemi per doména. Každý task přidává své
+// modely do vlastní sekce a vlastní (append-only) migraci; cizí modely se
+// nemění. Vazba na cizí model se řeší FK ze svého modelu.
+// Viz TECHNICKE-ZADANI.md §4.2.
+// ===========================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Core — User (T002)
+// ---------------------------------------------------------------------------
+
+/// Životní cyklus účtu. `deleted` je terminální stav.
+enum UserStatus {
+  active
+  deactivated
+  deleted
+}
+
+/// Základní identita uživatele; na ni se navěšují všechny domény.
+model User {
+  id     String     @id @default(cuid())
+  /// Přihlašovací e-mail. `citext` zajišťuje case-insensitive unikátnost.
+  email  String     @unique @db.Citext
+  status UserStatus @default(active)
+  /// BCP-47, výchozí čeština.
+  locale String     @default("cs")
+
+  /// Kontaktní preference (kanály, viditelnost kontaktu). Detail dořeší domény.
+  contactPreferences Json @default("{}")
+  /// Notifikační preference per kanál/typ. Detail dořeší T011/T065.
+  notificationPreferences Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
