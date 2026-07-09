@@ -1,0 +1,10 @@
+.next
+node_modules
+coverage
+playwright-report
+test-results
+storybook-static
+public
+zadani
+package-lock.json
+next-env.d.ts
