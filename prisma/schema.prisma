@@ -100,3 +100,81 @@ model PasswordResetToken {
   @@index([userId])
   @@map("password_reset_tokens")
 }
+
+// ---------------------------------------------------------------------------
+// Taxonomie profesí (T005)
+//
+// Číselník profesních kategorií a profesí (17 kategorií dle legacy-master-spec
+// §5). Čtení veřejné; správu řeší admin (T035). Vazbu profil↔profese vlastní
+// T007. Zdroj seed dat: src/features/taxonomy/data.ts.
+// ---------------------------------------------------------------------------
+
+/// Životní cyklus položky číselníku. `archived` položka zůstává na historických
+/// datech, ale nenabízí se v nových číselnících.
+enum TaxonomyStatus {
+  active
+  archived
+}
+
+/// Hlavní profesní kategorie (např. „Architecture & Design").
+model ProfessionCategory {
+  id   String @id @default(cuid())
+  /// Stabilní strojově čitelný identifikátor pro URL a odkazy.
+  slug String @unique
+  name String
+  /// Pořadí pro zobrazení stromu (dle pořadí ve specifikaci).
+  position Int
+
+  professions Profession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("profession_categories")
+}
+
+/// Konkrétní profese. Vždy patří do právě jedné kategorie.
+model Profession {
+  id   String @id @default(cuid())
+  slug String @unique
+  name String
+  /// Alternativní názvy pro vyhledávání (např. „topenář" ↔ „topení").
+  synonyms String[]
+  /// Regulovaná profese (vyžaduje autorizaci/oprávnění).
+  regulated Boolean @default(false)
+  /// Nápovědy k požadovanému ověření (např. autorizace ČKA/ČKAIT).
+  verificationHints String[]
+  status   TaxonomyStatus @default(active)
+  /// Pořadí v rámci kategorie.
+  position Int
+
+  categoryId String
+  category   ProfessionCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  specializations Specialization[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([status])
+  @@map("professions")
+}
+
+/// Užší specializace v rámci profese. Data doplní domény (např. T007); model
+/// zde definuje vazbu a strukturu číselníku.
+model Specialization {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  label       String
+  description String?
+
+  professionId String
+  profession   Profession @relation(fields: [professionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([professionId])
+  @@map("specializations")
+}
