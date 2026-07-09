@@ -14,9 +14,12 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
+    // Založí sdíleného přihlášeného uživatele a uloží storageState.
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
     },
   ],
   webServer: {

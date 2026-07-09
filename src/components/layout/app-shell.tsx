@@ -39,6 +39,11 @@ export type AppShellProps = {
   /** Unread notification count shown on the bell. */
   notificationCount?: number;
   user?: AppShellUser;
+  /**
+   * Account controls rendered next to the avatar (e.g. a sign-out button).
+   * Kept as a slot so the shell stays auth-agnostic (filled by T003).
+   */
+  accountMenu?: React.ReactNode;
   /** Label distinguishing the shell, e.g. "Admin". */
   areaLabel?: string;
   children: React.ReactNode;
@@ -106,6 +111,7 @@ function AppShell({
   contextSwitcher,
   notificationCount = 0,
   user,
+  accountMenu,
   areaLabel,
   children,
 }: AppShellProps) {
@@ -220,6 +226,8 @@ function AppShell({
               <AvatarFallback>{initials(user.name)}</AvatarFallback>
             </Avatar>
           ) : null}
+
+          {accountMenu}
         </header>
 
         <main className="flex-1 p-4 sm:p-6">{children}</main>

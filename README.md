@@ -13,7 +13,23 @@ Podrobné zadání viz [`TECHNICKE-ZADANI.md`](./TECHNICKE-ZADANI.md) a složka
 - **Vitest** (unit) · **Playwright** (e2e) · **Storybook** (komponenty)
 - CI: **GitHub Actions** (lint, typecheck, unit testy, build, e2e, migrace)
 
-Autentizace a design system se doplňují v navazujících taskách (T003, T006).
+Design system se doplňuje v navazujícím tasku (T006).
+
+## Autentizace (T003)
+
+Auth.js (NextAuth v5) s JWT session:
+
+- **Registrace / login** e-mailem a heslem (bcrypt), volitelně **Google OAuth**
+  (zapne se, jsou-li nastaveny `AUTH_GOOGLE_ID` a `AUTH_GOOGLE_SECRET`).
+- **Reset hesla** přes jednorázový token (platnost 1 h) — v DB jen jeho hash.
+- **Middleware** (`src/middleware.ts`) chrání sekce `(app)` a `(admin)`;
+  nepřihlášeného přesměruje na `/login` se zachováním návratové URL. `(public)`
+  routy jsou vždy dostupné.
+- Citlivé akce (login, reset) jsou omezené na 5 pokusů / min / IP.
+
+V dev/testu se odchozí e-maily neposílají, ale ukládají do in-memory outboxu;
+poslední e-mail pro adresu lze přečíst přes `GET /api/dev/outbox?to=<email>`
+(v produkci 404). `AUTH_SECRET` je povinný — viz `.env.example`.
 
 ## Požadavky
 

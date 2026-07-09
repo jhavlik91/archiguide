@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { STORAGE_STATE } from "./auth-helpers";
 
 const MOBILE = { width: 360, height: 740 };
 const DESKTOP = { width: 1280, height: 800 };
@@ -39,6 +40,9 @@ test.describe("Public layout", () => {
 });
 
 test.describe("App layout", () => {
+  // Přihlášené sekce vyžadují session (T003 middleware).
+  test.use({ storageState: STORAGE_STATE });
+
   test("desktop shows the persistent sidebar", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await goto(page, "/dashboard");
@@ -73,6 +77,8 @@ test.describe("App layout", () => {
 });
 
 test.describe("Admin layout", () => {
+  test.use({ storageState: STORAGE_STATE });
+
   test("renders the admin shell on desktop", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await goto(page, "/admin");

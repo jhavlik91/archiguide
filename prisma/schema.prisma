@@ -43,7 +43,62 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Back-relace vlastněné jinými doménami (nepřidávají sloupec do `users`).
+  credential          Credential?          // T003
+  authAccounts        AuthAccount[]        // T003
+  passwordResetTokens PasswordResetToken[] // T003
+
   @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Auth (T003)
+//
+// Přihlašovací údaje a OAuth vazby žijí v samostatných modelech s FK na User,
+// aby T003 neměnilo cizí model User (viz TECHNICKE-ZADANI.md §4.2). Session je
+// bezstavová (JWT), proto zde není model Session.
+// ---------------------------------------------------------------------------
+
+/// Heslo pro credentials provider. Odděleno od User (1:1), hash bcrypt.
+model Credential {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("credentials")
+}
+
+/// Propojení externího OAuth účtu (Google) s uživatelem. Umožňuje přihlášení
+/// přes providera i propojení s existujícím účtem podle e-mailu.
+model AuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Identifikátor providera, např. "google".
+  provider          String
+  /// ID účtu u providera (`sub`).
+  providerAccountId String
+  createdAt         DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("auth_accounts")
+}
+
+/// Jednorázový token pro reset hesla. V DB jen SHA-256 hash; plaintext se
+/// posílá pouze e-mailem. Expirace 1 h, po použití je `usedAt` vyplněno.
+model PasswordResetToken {
+  tokenHash String    @id
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 // ---------------------------------------------------------------------------
