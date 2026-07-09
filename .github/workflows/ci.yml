@@ -26,6 +26,35 @@ jobs:
       - run: npm run build
       - run: npm run build-storybook
 
+  migrations:
+    name: Prisma migrations + seed
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: archiguide
+          POSTGRES_PASSWORD: archiguide
+          POSTGRES_DB: archiguide
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U archiguide -d archiguide"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://archiguide:archiguide@localhost:5432/archiguide?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate:deploy
+      - run: npm run db:seed
+
   e2e:
     name: Playwright e2e
     runs-on: ubuntu-latest

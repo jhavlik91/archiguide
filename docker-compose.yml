@@ -1,0 +1,22 @@
+# Lokální vývojová infrastruktura. Produkce používá spravovaný Postgres.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: archiguide-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: archiguide
+      POSTGRES_PASSWORD: archiguide
+      POSTGRES_DB: archiguide
+    ports:
+      - "5432:5432"
+    volumes:
+      - archiguide-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U archiguide -d archiguide"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  archiguide-db-data:
