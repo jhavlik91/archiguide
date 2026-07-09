@@ -1,9 +1,10 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
 /**
- * Minimal class-name joiner used by placeholder components in the scaffold.
- * The full design-system helper (clsx + tailwind-merge) arrives with T006.
+ * Design-system class-name helper: merges conditional class lists (clsx) and
+ * resolves conflicting Tailwind utilities so the last one wins (tailwind-merge).
  */
-export function cn(
-  ...classes: Array<string | false | null | undefined>
-): string {
-  return classes.filter(Boolean).join(" ");
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs));
 }
