@@ -46,6 +46,10 @@ test.describe("App layout", () => {
     await expect(
       page.getByRole("navigation", { name: "Navigace aplikace" }),
     ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Přehled" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await expect(
       page.getByRole("button", { name: "Otevřít navigaci" }),
     ).toBeHidden();
@@ -62,6 +66,9 @@ test.describe("App layout", () => {
     const drawer = page.getByRole("dialog", { name: "Navigace" });
     await expect(drawer).toBeVisible();
     await expect(drawer.getByRole("link", { name: "Přehled" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(drawer).toBeHidden();
   });
 });
 

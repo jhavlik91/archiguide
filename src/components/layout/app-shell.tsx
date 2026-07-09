@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Bell, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,10 @@ export type AppShellUser = {
 export type AppShellProps = {
   /** Sidebar navigation entries. */
   navItems: AppNavItem[];
-  /** Currently active href, used to highlight the matching nav item. */
+  /**
+   * Overrides which nav item is highlighted as active. By default the shell
+   * derives it from the current pathname.
+   */
   activeHref?: string;
   /**
    * Context switcher slot rendered at the top of the sidebar. Empty in T006 —
@@ -50,19 +54,24 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
+/** `/admin` matches `/admin` and `/admin/users`, but not `/admin-x`. */
+function isActive(href: string, currentPath: string): boolean {
+  return currentPath === href || currentPath.startsWith(`${href}/`);
+}
+
 function SidebarNav({
   navItems,
   activeHref,
   onNavigate,
 }: {
   navItems: AppNavItem[];
-  activeHref?: string;
+  activeHref: string;
   onNavigate?: () => void;
 }) {
   return (
     <nav aria-label="Navigace aplikace" className="flex flex-1 flex-col gap-1">
       {navItems.map((item) => {
-        const active = item.href === activeHref;
+        const active = isActive(item.href, activeHref);
         return (
           <Link
             key={item.href}
@@ -100,7 +109,18 @@ function AppShell({
   areaLabel,
   children,
 }: AppShellProps) {
+  const pathname = usePathname();
+  const currentHref = activeHref ?? pathname;
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!drawerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [drawerOpen]);
 
   const sidebarBody = (onNavigate?: () => void) => (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -117,7 +137,7 @@ function AppShell({
       {contextSwitcher ? <div>{contextSwitcher}</div> : null}
       <SidebarNav
         navItems={navItems}
-        activeHref={activeHref}
+        activeHref={currentHref}
         onNavigate={onNavigate}
       />
     </div>
