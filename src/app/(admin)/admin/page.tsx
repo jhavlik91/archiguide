@@ -1,10 +1,10 @@
 export default function AdminPage() {
   return (
-    <main className="mx-auto max-w-2xl p-8">
-      <h1 className="text-2xl font-semibold">Administrace</h1>
-      <p className="text-foreground/50 mt-2 text-sm">
-        Placeholder administrace — scaffold (T001).
+    <div className="mx-auto max-w-5xl space-y-2">
+      <h1 className="text-2xl font-semibold tracking-tight">Administrace</h1>
+      <p className="text-muted-foreground text-sm">
+        Placeholder administrace — admin layout (T006).
       </p>
-    </main>
+    </div>
   );
 }
