@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { normalizeEmail } from "@/lib/email";
 import { trackEvent } from "@/lib/analytics";
@@ -76,21 +77,33 @@ export async function register(
   if (limited) return limited;
 
   const email = normalizeEmail(parsed.data.email);
-  const existing = await db.user.findUnique({ where: { email } });
-  if (existing) {
+  const emailTaken: AuthActionResult = {
     // Pokrývá i „registrace e-mailem existujícího Google účtu“ — nezakládáme
     // duplicitu ani nepřebíráme cizí účet nastavením hesla.
-    return {
-      ok: false,
-      error: "email_taken",
-      message: "Účet s tímto e-mailem už existuje. Zkuste se přihlásit.",
-    };
-  }
+    ok: false,
+    error: "email_taken",
+    message: "Účet s tímto e-mailem už existuje. Zkuste se přihlásit.",
+  };
+  const existing = await db.user.findUnique({ where: { email } });
+  if (existing) return emailTaken;
 
   const passwordHash = await hashPassword(parsed.data.password);
-  const user = await db.user.create({
-    data: { email, credential: { create: { passwordHash } } },
-  });
+  let user;
+  try {
+    user = await db.user.create({
+      data: { email, credential: { create: { passwordHash } } },
+    });
+  } catch (error) {
+    // Souběžná registrace stejného e-mailu — unique index (P2002) je zdroj
+    // pravdy, kontrola výše je jen rychlá cesta.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return emailTaken;
+    }
+    throw error;
+  }
 
   // Verifikační e-mail je zatím stub (napojení v T011/T033).
   const baseUrl = await getBaseUrl();

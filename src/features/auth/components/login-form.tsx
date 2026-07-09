@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login, reactivateAndLogin } from "../actions";
+import { safeReturnUrl } from "../return-url";
 import { FormError } from "./auth-card";
 
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const returnUrl = params.get("returnUrl") || "/dashboard";
+  const returnUrl = safeReturnUrl(params.get("returnUrl"));
   const justReset = params.get("reset") === "1";
 
   const [email, setEmail] = useState("");

@@ -9,12 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PASSWORD_MIN_LENGTH } from "../validation";
 import { register } from "../actions";
+import { safeReturnUrl } from "../return-url";
 import { FormError } from "./auth-card";
 
 export function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const returnUrl = params.get("returnUrl") || "/dashboard";
+  const returnUrl = safeReturnUrl(params.get("returnUrl"));
 
   const [state, action, pending] = useActionState(register, null);
 
