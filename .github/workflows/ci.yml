@@ -13,6 +13,11 @@ jobs:
   verify:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+    # `next build` importuje moduly sahající na DB klient a Auth.js; k připojení
+    # ale nedochází (žádné dotazy při buildu), stačí tedy dummy hodnoty.
+    env:
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
+      AUTH_SECRET: ci-verify-secret-0123456789abcdef
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,6 +63,25 @@ jobs:
   e2e:
     name: Playwright e2e
     runs-on: ubuntu-latest
+    # Auth flow (registrace, login, reset) potřebuje reálnou DB.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: archiguide
+          POSTGRES_PASSWORD: archiguide
+          POSTGRES_DB: archiguide
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U archiguide -d archiguide"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://archiguide:archiguide@localhost:5432/archiguide?schema=public
+      AUTH_SECRET: ci-e2e-secret-0123456789abcdef
+      AUTH_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -65,6 +89,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run db:migrate:deploy
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
