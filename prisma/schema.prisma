@@ -48,6 +48,7 @@ model User {
   authAccounts        AuthAccount[]        // T003
   passwordResetTokens PasswordResetToken[] // T003
   roles               UserRole[]           // T004
+  professionalProfile ProfessionalProfile? // T007
 
   @@map("users")
 }
@@ -153,6 +154,7 @@ model Profession {
   category   ProfessionCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   specializations Specialization[]
+  profileLinks    ProfileProfession[] // T007 (back-relace, nepřidává sloupec)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -211,4 +213,114 @@ model UserRole {
   @@unique([userId, role])
   @@index([userId])
   @@map("user_roles")
+}
+
+// ---------------------------------------------------------------------------
+// Profesionální profil (T007)
+//
+// Profil profesionála (1:1 s User). Odbornost je M:N na `Profession` z taxonomie
+// (T005) přes join `ProfileProfession` s příznakem hlavní profese. `draft` profil
+// je viditelný jen vlastníkovi, `published` je veřejný (route až T008). Příjem
+// poptávek je nezávislý flag, aktivovatelný jen s ≥1 profesí (viz service vrstva).
+// Specializace/regiony/jazyky jsou volné číselníky (String[]); taxonomie
+// `Specialization` je zatím bez dat, doplní ji pozdější obsahový task.
+// ---------------------------------------------------------------------------
+
+/// Stav profilu. `draft` (rozpracovaný, jen vlastník) → `published` (veřejný).
+enum ProfileStatus {
+  draft
+  published
+}
+
+/// Dostupnost profesionála pro nové zakázky.
+enum Availability {
+  open // otevřený novým zakázkám
+  limited // omezená kapacita
+  unavailable // momentálně nepřijímá
+}
+
+/// Forma spolupráce (může jich být víc současně).
+enum CollaborationForm {
+  remote // na dálku
+  onsite // osobně / na místě
+  hybrid // kombinace
+}
+
+/// Cenový model spolupráce.
+enum PricingModel {
+  hourly // hodinová sazba
+  fixed // pevná cena za rozsah
+  per_project // cena za projekt
+  on_request // na vyžádání / dohodou
+}
+
+/// Profil profesionála. 1:1 s User; drží prezentaci, odbornost, dostupnost a
+/// ceny. Většina polí je volitelná — vzniká postupně přes onboarding wizard.
+model ProfessionalProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Základní informace (legacy-master-spec §22.1)
+  /// Titulek profilu, max 120 znaků (validováno v appce).
+  headline String?
+  /// Odkaz na profilovou fotku. Vlastní upload řeší T014; zde jen URL.
+  photoUrl String?
+  bio      String?
+  /// Lokalita (město/obec) profesionála.
+  location String?
+  /// Regiony působnosti (volný číselník).
+  serviceAreas String[]
+  /// Jazyky, kterými profesionál komunikuje.
+  languages String[]
+
+  // Odbornost (legacy-master-spec §22.2)
+  yearsOfExperience Int?
+  /// Užší specializace (volný text; taxonomie Specialization zatím bez dat).
+  specializations String[]
+  /// Typy projektů, na které se profesionál zaměřuje.
+  projectTypes String[]
+
+  // Dostupnost a spolupráce (§22.1)
+  availability       Availability?
+  collaborationForms CollaborationForm[]
+
+  // Ceny (§22)
+  pricingModel PricingModel?
+  /// Doplňující poznámka k cenám (např. „od 1 500 Kč/h").
+  pricingNote String?
+
+  // Stav a onboarding
+  status ProfileStatus @default(draft)
+  /// Nezávislý přepínač „přijímám poptávky". Aktivovatelný jen s ≥1 profesí.
+  acceptingRequests Boolean @default(false)
+  /// Poslední dokončený krok onboarding wizardu (0 = nezačato). Umožní návrat.
+  onboardingStep Int @default(0)
+  publishedAt    DateTime?
+
+  professions ProfileProfession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("professional_profiles")
+}
+
+/// Vazba profil↔profese (M:N) s příznakem hlavní profese. `isPrimary` má právě
+/// jeden řádek profilu (vynuceno parciálním unikátním indexem v migraci +
+/// service vrstvou). Profesi nelze smazat, dokud je použitá (`Restrict`) —
+/// archivace profese profil neruší (edge case: profese archivovaná adminem).
+model ProfileProfession {
+  id           String              @id @default(cuid())
+  profileId    String
+  profile      ProfessionalProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  professionId String
+  profession   Profession          @relation(fields: [professionId], references: [id], onDelete: Restrict)
+  /// Hlavní profese profilu (právě jedna). Ostatní jsou vedlejší.
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([profileId, professionId])
+  @@index([professionId])
+  @@map("profile_professions")
 }
