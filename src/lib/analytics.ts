@@ -8,7 +8,11 @@ export type AnalyticsEvent =
   | "auth.registered"
   | "auth.login"
   | "auth.password_reset"
-  | "role.context_switched";
+  | "role.context_switched"
+  // Profesionální profil (T007)
+  | "profile.created"
+  | "profile.published"
+  | "profile.accepting_requests_toggled";
 
 export function trackEvent(
   event: AnalyticsEvent,

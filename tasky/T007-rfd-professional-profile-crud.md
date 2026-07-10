@@ -1,6 +1,6 @@
 # T007 — Profesionální profil — CRUD
 
-**Track:** B (profily) | **Závislosti:** T004, T005 | **Assignee:** —
+**Track:** B (profily) | **Závislosti:** T004, T005 | **Assignee:** Claude Code
 
 ## Goal
 Profesionál si založí a spravuje profil: bio, profese, specializace, působnost, dostupnost, cenový model. Viz `zadani/legacy-master-spec.md` §22, `zadani/10-domain-entities.md` ProfessionalProfile.
