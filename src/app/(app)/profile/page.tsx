@@ -31,6 +31,7 @@ function toCategoryOptions(
 function toEditorProfile(profile: ProfileWithProfessions): EditorProfile {
   return {
     status: profile.status,
+    slug: profile.slug,
     acceptingRequests: profile.acceptingRequests,
     headline: profile.headline,
     photoUrl: profile.photoUrl,

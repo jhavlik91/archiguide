@@ -297,6 +297,9 @@ model ProfessionalProfile {
   /// Poslední dokončený krok onboarding wizardu (0 = nezačato). Umožní návrat.
   onboardingStep Int @default(0)
   publishedAt    DateTime?
+  /// Veřejná URL část profilu (`/profesional/[slug]`). Generuje se z titulku při
+  /// první publikaci a dál se nemění (stabilní odkaz). Draft ho ještě nemá. (T008)
+  slug String? @unique
 
   professions ProfileProfession[]
 
