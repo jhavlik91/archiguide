@@ -12,7 +12,10 @@ export type AnalyticsEvent =
   // Profesionální profil (T007)
   | "profile.created"
   | "profile.published"
-  | "profile.accepting_requests_toggled";
+  | "profile.accepting_requests_toggled"
+  // Verifikace (T011)
+  | "verification.email_completed"
+  | "verification.phone_completed";
 
 export function trackEvent(
   event: AnalyticsEvent,

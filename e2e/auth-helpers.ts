@@ -70,3 +70,17 @@ export async function fetchResetLink(
   expect(body.link, "outbox e-mail obsahuje odkaz").toBeTruthy();
   return body.link as string;
 }
+
+/** Odkaz z posledního e-mailu (verifikace i reset sdílí stejný dev outbox). */
+export const fetchEmailLink = fetchResetLink;
+
+/** Přečte poslední ověřovací SMS kód pro číslo z dev SMS outboxu (T011). */
+export async function fetchSmsCode(page: Page, phone: string): Promise<string> {
+  const res = await page.request.get(
+    `/api/dev/sms?to=${encodeURIComponent(phone)}`,
+  );
+  expect(res.ok()).toBeTruthy();
+  const body = (await res.json()) as { code?: string };
+  expect(body.code, "SMS outbox obsahuje kód").toBeTruthy();
+  return body.code as string;
+}

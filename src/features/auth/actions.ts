@@ -7,8 +7,9 @@ import { normalizeEmail } from "@/lib/email";
 import { trackEvent } from "@/lib/analytics";
 import { rateLimit } from "@/lib/rate-limit";
 import { signIn, signOut } from "@/auth";
+import { startEmailVerification } from "@/features/verification/service";
 import { hashPassword, verifyPassword } from "./password";
-import { sendPasswordResetEmail, sendVerificationEmail } from "./email";
+import { sendPasswordResetEmail } from "./email";
 import { createResetToken, hashResetToken, isResetTokenValid } from "./tokens";
 import {
   AUTH_RATE_LIMIT,
@@ -105,9 +106,9 @@ export async function register(
     throw error;
   }
 
-  // Verifikační e-mail je zatím stub (napojení v T011/T033).
+  // Verifikační e-mail s reálným odkazem (T011).
   const baseUrl = await getBaseUrl();
-  await sendVerificationEmail(email, `${baseUrl}/verify?stub=1`);
+  await startEmailVerification({ userId: user.id, email, baseUrl });
   trackEvent("auth.registered", { userId: user.id });
 
   await signIn("credentials", {
