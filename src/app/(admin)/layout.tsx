@@ -5,9 +5,10 @@ import {
   Flag,
   BarChart3,
 } from "lucide-react";
-import { redirect } from "next/navigation";
 import { AppShell, type AppNavItem } from "@/components/layout/app-shell";
 import { auth } from "@/auth";
+import { requirePermission } from "@/lib/session";
+import { P_ACCESS_ADMIN_AREA } from "@/lib/permissions";
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
 
 const ADMIN_NAV_ITEMS: AppNavItem[] = [
@@ -21,16 +22,17 @@ const ADMIN_NAV_ITEMS: AppNavItem[] = [
 export default async function AdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Admin sekce vyžaduje přihlášení; kontrolu rolí doplní T004.
+  // Admin sekce: přihlášení řeší middleware, roli vynutí permission vrstva.
+  // Nepřihlášený → /login, přihlášený bez role admin/moderator → 403 (T004).
+  await requirePermission(P_ACCESS_ADMIN_AREA);
   const session = await auth();
-  if (!session?.user) redirect("/login");
 
-  const email = session.user.email ?? "";
+  const email = session?.user?.email ?? "";
   return (
     <AppShell
       navItems={ADMIN_NAV_ITEMS}
       areaLabel="Admin"
-      user={{ name: session.user.name ?? email, email }}
+      user={{ name: session?.user?.name ?? email, email }}
       accountMenu={<SignOutButton />}
     >
       {children}

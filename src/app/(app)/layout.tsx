@@ -6,14 +6,16 @@ import {
   User,
   Settings,
 } from "lucide-react";
-import { redirect } from "next/navigation";
 import { AppShell, type AppNavItem } from "@/components/layout/app-shell";
 import { auth } from "@/auth";
+import { requireUser } from "@/lib/session";
+import { hasRole } from "@/lib/permissions";
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
+import { RoleContextSwitcher } from "@/features/roles/components/role-context-switcher";
 
 /**
- * Application navigation. The context switcher slot is intentionally left empty
- * here — T004 will supply the org/role switcher. The notification count is a
+ * Application navigation. The context switcher (T004) is shown only to accounts
+ * that hold both the client and professional role. The notification count is a
  * placeholder until notifications (T032) are wired.
  */
 const NAV_ITEMS: AppNavItem[] = [
@@ -28,16 +30,24 @@ const NAV_ITEMS: AppNavItem[] = [
 export default async function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Obrana do hloubky vedle middleware; zároveň zdroj session uživatele.
+  // Obrana do hloubky vedle middleware. `requireUser` čte role z DB per-request.
+  const actor = await requireUser();
   const session = await auth();
-  if (!session?.user) redirect("/login");
 
-  const email = session.user.email ?? "";
+  const email = session?.user?.email ?? "";
+  // Přepínač jen pro účty s oběma rolemi (T004 § AC).
+  const dualRole = hasRole(actor, "client") && hasRole(actor, "professional");
+
   return (
     <AppShell
       navItems={NAV_ITEMS}
-      user={{ name: session.user.name ?? email, email }}
+      user={{ name: session?.user?.name ?? email, email }}
       accountMenu={<SignOutButton />}
+      contextSwitcher={
+        dualRole ? (
+          <RoleContextSwitcher active={actor.activeContext} />
+        ) : undefined
+      }
     >
       {children}
     </AppShell>

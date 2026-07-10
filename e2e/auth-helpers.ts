@@ -2,6 +2,19 @@ import { expect, type Page } from "@playwright/test";
 
 /** Uložený přihlášený stav sdíleného uživatele (viz auth.setup.ts). */
 export const STORAGE_STATE = "e2e/.auth/user.json";
+/** Session seed uživatele s rolí admin (viz auth.setup.ts, T004). */
+export const ADMIN_STATE = "e2e/.auth/admin.json";
+/** Session seed uživatele s rolemi client+professional (T004). */
+export const DUAL_STATE = "e2e/.auth/dual.json";
+
+/**
+ * Seed uživatelé zakládaní `prisma db seed` (T004). Heslo je společné dev heslo.
+ * Používají je role/permission e2e testy.
+ */
+export const SEED_USERS = {
+  admin: { email: "admin@archiguide.test", password: "dev-password-123" },
+  dual: { email: "dual@archiguide.test", password: "dev-password-123" },
+} as const;
 
 /** Vygeneruje unikátní e-mail, aby testy nekolidovaly na unique indexu. */
 export function uniqueEmail(prefix = "user"): string {
@@ -32,6 +45,16 @@ export async function loginViaUi(
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Heslo").fill(password);
   await page.getByRole("button", { name: "Přihlásit se" }).click();
+}
+
+/** Přihlásí existujícího uživatele a počká na přesměrování do aplikace. */
+export async function loginAndWait(
+  page: Page,
+  email: string,
+  password: string,
+): Promise<void> {
+  await loginViaUi(page, email, password);
+  await page.waitForURL("**/dashboard");
 }
 
 /** Přečte poslední dev e-mail pro adresu z in-memory outboxu. */

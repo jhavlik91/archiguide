@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { buildTaxonomy } from "../../src/features/taxonomy/data";
+import { hashPassword } from "../../src/features/auth/password";
 
 // Seed infrastruktura. Doménové seedy se přidávají do `main`. Vše je idempotentní
 // (upsert dle slugu), aby `prisma db seed` šlo spustit opakovaně i v CI.
@@ -66,8 +67,47 @@ async function seedTaxonomy() {
   );
 }
 
+/**
+ * Vývojoví uživatelé s rolemi (T004). Slouží k lokálnímu vývoji a e2e testům
+ * přepínání kontextu a ochrany (admin) rout. V produkci se nezakládají.
+ * Heslo je společné a nízkohodnotné — jen pro dev/CI.
+ */
+const DEV_PASSWORD = "dev-password-123";
+const DEV_USERS = [
+  { email: "admin@archiguide.test", roles: ["admin"] as const },
+  {
+    email: "dual@archiguide.test",
+    roles: ["client", "professional"] as const,
+  },
+] as const;
+
+async function seedDevUsers() {
+  if (process.env.NODE_ENV === "production") return;
+
+  const passwordHash = await hashPassword(DEV_PASSWORD);
+  for (const spec of DEV_USERS) {
+    const user = await prisma.user.upsert({
+      where: { email: spec.email },
+      update: {},
+      create: {
+        email: spec.email,
+        credential: { create: { passwordHash } },
+      },
+    });
+    for (const role of spec.roles) {
+      await prisma.userRole.upsert({
+        where: { userId_role: { userId: user.id, role } },
+        create: { userId: user.id, role },
+        update: {},
+      });
+    }
+  }
+  console.log(`Dev uživatelé: ${DEV_USERS.length} (heslo: ${DEV_PASSWORD}).`);
+}
+
 async function main() {
   await seedTaxonomy();
+  await seedDevUsers();
   console.log("Seed dokončen.");
 }
 

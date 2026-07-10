@@ -1,6 +1,6 @@
 # T004 — Role model + permission vrstva
 
-**Track:** A (foundation) | **Závislosti:** T003 | **Assignee:** —
+**Track:** A (foundation) | **Závislosti:** T003 | **Assignee:** claude (PR nad feat/t003-auth)
 
 ## Goal
 Multi-role model (jeden účet = více rolí) a centrální permission vrstva, kterou budou používat všechny domény. Viz `zadani/05-permission-matrix.md`.
@@ -37,10 +37,10 @@ Jedna osoba klient i profesionál; moderátor bez client role; ztráta role běh
 Event: `role.context_switched`.
 
 ## Acceptance criteria
-- [ ] Uživatel s oběma rolemi přepíná kontext a UI se přizpůsobí.
-- [ ] `can()` pokryto unit testy pro každou roli.
-- [ ] Non-admin dostane 403 na `(admin)` routách (e2e).
-- [ ] Ztráta role se projeví bez nutnosti logout/login.
+- [x] Uživatel s oběma rolemi přepíná kontext a UI se přizpůsobí. (`RoleContextSwitcher` + e2e `roles.spec.ts`)
+- [x] `can()` pokryto unit testy pro každou roli. (`src/lib/permissions.test.ts`)
+- [x] Non-admin dostane 403 na `(admin)` routách (e2e). (`forbidden()` + e2e)
+- [x] Ztráta role se projeví bez nutnosti logout/login. (role čteny per-request v `lib/session.ts`, e2e „změna role za běhu session")
 
 ## Out of scope
 Organizační role (T009), konkrétní doménová oprávnění (definují si domény).
