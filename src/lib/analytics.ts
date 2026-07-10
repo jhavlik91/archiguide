@@ -13,6 +13,8 @@ export type AnalyticsEvent =
   | "profile.created"
   | "profile.published"
   | "profile.accepting_requests_toggled"
+  // Veřejná stránka profilu (T008)
+  | "profile.viewed"
   // Verifikace (T011)
   | "verification.email_completed"
   | "verification.phone_completed";

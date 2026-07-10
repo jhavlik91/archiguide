@@ -1,8 +1,10 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { normalizeProfessionLinks, canAcceptRequests, canPublish } from "./rules";
+import { slugify, withSuffix } from "./slug";
 import type {
   AvailabilityInput,
   BasicsInput,
@@ -29,6 +31,33 @@ const profileInclude = {
 export type ProfileWithProfessions = Prisma.ProfessionalProfileGetPayload<{
   include: typeof profileInclude;
 }>;
+
+/**
+ * Tvar pro veřejnou stránku (T008): profil + profese + stav vlastníka (kvůli
+ * 404 u deaktivovaného účtu). Kontaktní údaje se nikdy nenačítají — private by
+ * default (viz zadani/16 §6), takže je route ani nemůže omylem vykreslit.
+ */
+const publicProfileInclude = {
+  professions: {
+    include: { profession: { select: { id: true, name: true, slug: true } } },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+  },
+  user: { select: { status: true } },
+} satisfies Prisma.ProfessionalProfileInclude;
+
+export type PublicProfile = Prisma.ProfessionalProfileGetPayload<{
+  include: typeof publicProfileInclude;
+}>;
+
+/** Profil podle veřejného slugu (bez ohledu na stav — viditelnost řeší route). */
+export function getPublicProfileBySlug(
+  slug: string,
+): Promise<PublicProfile | null> {
+  return db.professionalProfile.findUnique({
+    where: { slug },
+    include: publicProfileInclude,
+  });
+}
 
 /** Výsledek operace s doménovým pravidlem. */
 export type ServiceResult =
@@ -100,6 +129,11 @@ export async function updateBasics(
       languages: input.languages,
     },
   });
+  // Jakmile má profil titulek, přiřaď mu veřejný slug — vlastník tak může
+  // draft prohlédnout náhledem (`?preview=1`) ještě před publikací (T008).
+  if (input.headline && input.headline.trim().length > 0) {
+    await ensureSlug(userId);
+  }
 }
 
 /** Uloží sekci „odbornost" (bez profesí — ty mají vlastní operaci). */
@@ -259,6 +293,7 @@ export async function publishProfile(userId: string): Promise<ServiceResult> {
     select: {
       headline: true,
       publishedAt: true,
+      slug: true,
       _count: { select: { professions: true } },
     },
   });
@@ -281,7 +316,64 @@ export async function publishProfile(userId: string): Promise<ServiceResult> {
       ...(profile.publishedAt ? {} : { publishedAt: new Date() }),
     },
   });
+  // Publikovaný profil musí mít slug, jinak by byl veřejně nedosažitelný.
+  // Obvykle už vznikl při uložení titulku; tady je to pojistka.
+  if (!profile.slug) await ensureSlug(userId);
   return { ok: true };
+}
+
+/**
+ * Přiřadí profilu veřejný slug, pokud ho ještě nemá a má titulek. Slug je
+ * stabilní — jednou vygenerovaný se nemění (přežije změnu titulku i unpublish).
+ * Souběh řeší DB unikát: prohrávající zápis (P2002) se tiše ignoruje.
+ */
+async function ensureSlug(userId: string): Promise<void> {
+  const profile = await db.professionalProfile.findUnique({
+    where: { userId },
+    select: { slug: true, headline: true },
+  });
+  if (!profile || profile.slug || !profile.headline?.trim()) return;
+
+  const slug = await reserveUniqueSlug(profile.headline);
+  try {
+    // updateMany s podmínkou `slug: null` je atomické — neošlape existující slug,
+    // když ho mezitím obsadil souběžný zápis (vrátí count 0, nic se nestane).
+    await db.professionalProfile.updateMany({
+      where: { userId, slug: null },
+      data: { slug },
+    });
+  } catch (error) {
+    // Kolize na unikátu (jiný profil obsadil stejný slug) — nevadí, příště se
+    // doplní jiná varianta. Ostatní chyby probublají.
+    if (
+      !(
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      )
+    ) {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Najde volný slug: nejdřív zkusí čistý root z titulku, při kolizi přidává krátký
+ * náhodný sufix. Uniqueness se přesto vynucuje DB indexem — souběžná publikace
+ * dvou stejných titulků skončí P2002 a publikaci lze bezpečně zopakovat.
+ */
+async function reserveUniqueSlug(source: string): Promise<string> {
+  const root = slugify(source);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const suffix = attempt === 0 ? "" : randomBytes(3).toString("hex");
+    const candidate = withSuffix(root, suffix);
+    const taken = await db.professionalProfile.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
+    if (!taken) return candidate;
+  }
+  // Krajně nepravděpodobné (8 kolizí) — sáhni po delším náhodném sufixu.
+  return withSuffix(root, randomBytes(6).toString("hex"));
 }
 
 /** Vrátí publikovaný profil zpět do draftu (skryje ho z veřejnosti). */

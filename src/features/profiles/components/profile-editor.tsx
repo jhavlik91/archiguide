@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
-import { CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2, ExternalLink, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,8 @@ const NONE = "__none__";
 
 export type EditorProfile = {
   status: "draft" | "published";
+  /** Veřejný slug (má ho profil až po první publikaci). */
+  slug: string | null;
   acceptingRequests: boolean;
   headline: string | null;
   photoUrl: string | null;
@@ -128,6 +131,20 @@ export function ProfileEditor({
               </CardDescription>
             </div>
             <div className="flex gap-2">
+              {profile.slug && (
+                <Button variant="ghost" asChild>
+                  <Link
+                    href={
+                      isPublished
+                        ? `/profesional/${profile.slug}`
+                        : `/profesional/${profile.slug}?preview=1`
+                    }
+                  >
+                    <ExternalLink className="size-4" />
+                    {isPublished ? "Veřejný profil" : "Náhled"}
+                  </Link>
+                </Button>
+              )}
               {isPublished ? (
                 <Button
                   variant="outline"
