@@ -64,7 +64,7 @@ export async function listVerifications(
       row.status === "pending" && isChallengeExpired(row) ? "expired" : row.status;
 
     const attemptsLeft =
-      status === "pending" && row.secretHash
+      type === "phone" && status === "pending" && row.secretHash
         ? Math.max(0, PHONE_MAX_ATTEMPTS - row.attempts)
         : null;
 
@@ -102,14 +102,28 @@ export async function getVerifiedTypes(
 /**
  * Založí/obnoví e-mailovou výzvu a odešle verifikační odkaz. Idempotentní vůči
  * opakovaným žádostem — přepíše dosavadní výzvu novým tokenem (`pending`).
+ * Je-li tentýž e-mail už ověřený, nedělá nic (`already_verified`) — opakovaná
+ * žádost (např. ze zastaralého tabu) nesmí shodit ověřený stav zpět na pending.
  * Volá se po registraci, při znovuodeslání i po změně e-mailu.
  */
 export async function startEmailVerification(params: {
   userId: string;
   email: string;
   baseUrl: string;
-}): Promise<void> {
+}): Promise<"sent" | "already_verified"> {
   const email = normalizeEmail(params.email);
+
+  const existing = await db.verification.findUnique({
+    where: { userId_type: { userId: params.userId, type: "email" } },
+    select: { status: true, value: true },
+  });
+  if (
+    existing?.status === "verified" &&
+    emailsCollide(existing.value, email)
+  ) {
+    return "already_verified";
+  }
+
   const { token, tokenHash } = createEmailToken();
   const expiresAt = new Date(Date.now() + EMAIL_TOKEN_TTL_MS);
 
@@ -138,6 +152,7 @@ export async function startEmailVerification(params: {
     email,
     `${params.baseUrl}/verify?token=${token}`,
   );
+  return "sent";
 }
 
 /** Výsledek potvrzení e-mailového odkazu. */

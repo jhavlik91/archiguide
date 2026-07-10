@@ -79,12 +79,15 @@ export async function resendEmailVerification(): Promise<VerificationActionResul
   });
   if (!user) return UNAUTHENTICATED;
 
-  await startEmailVerification({
+  const outcome = await startEmailVerification({
     userId: guard.userId,
     email: user.email,
     baseUrl: await getBaseUrl(),
   });
   revalidatePath("/settings");
+  if (outcome === "already_verified") {
+    return { ok: true, message: "E-mail už je ověřený." };
+  }
   return { ok: true, message: "Poslali jsme vám nový ověřovací odkaz." };
 }
 
