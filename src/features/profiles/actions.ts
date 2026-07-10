@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { getActor } from "@/lib/session";
 import { trackEvent } from "@/lib/analytics";
-import { type UserActor, hasRole } from "@/lib/permissions";
-// Side-effect: registrace oprávnění profilů (profiles.edit_own, profiles.view).
-import "./permissions";
+import { type UserActor, can } from "@/lib/permissions";
+// Import zároveň registruje oprávnění profilů (profiles.edit_own, profiles.view).
+import { P_PROFILE_EDIT } from "./permissions";
 import {
   getOrCreateDraft,
   publishProfile,
@@ -69,7 +69,7 @@ async function requireProfessionalProfile(): Promise<
 > {
   const actor = await getActor();
   if (actor.kind !== "user") return { result: UNAUTHENTICATED };
-  if (!hasRole(actor, "professional")) return { result: FORBIDDEN };
+  if (!can(actor, P_PROFILE_EDIT)) return { result: FORBIDDEN };
 
   const { created } = await getOrCreateDraft(actor.userId);
   if (created) trackEvent("profile.created", { userId: actor.userId });

@@ -55,11 +55,24 @@ export async function getOrCreateDraft(
   const existing = await getProfileByUserId(userId);
   if (existing) return { profile: existing, created: false };
 
-  const profile = await db.professionalProfile.create({
-    data: { userId },
-    include: profileInclude,
-  });
-  return { profile, created: true };
+  try {
+    const profile = await db.professionalProfile.create({
+      data: { userId },
+      include: profileInclude,
+    });
+    return { profile, created: true };
+  } catch (error) {
+    // Souběžné první akce: prohrávající create narazí na unikát userId —
+    // draft mezitím založil někdo jiný, jen ho dočti.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const profile = await getProfileByUserId(userId);
+      if (profile) return { profile, created: false };
+    }
+    throw error;
+  }
 }
 
 /** Aktuální počet profesí profilu (0, pokud profil neexistuje). */
@@ -245,7 +258,7 @@ export async function publishProfile(userId: string): Promise<ServiceResult> {
     where: { userId },
     select: {
       headline: true,
-      status: true,
+      publishedAt: true,
       _count: { select: { professions: true } },
     },
   });
@@ -264,8 +277,8 @@ export async function publishProfile(userId: string): Promise<ServiceResult> {
     where: { userId },
     data: {
       status: "published",
-      // publishedAt nastav jen při první publikaci.
-      ...(profile.status === "published" ? {} : { publishedAt: new Date() }),
+      // publishedAt nastav jen při první publikaci (přežije i unpublish).
+      ...(profile.publishedAt ? {} : { publishedAt: new Date() }),
     },
   });
   return { ok: true };

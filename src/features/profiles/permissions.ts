@@ -1,7 +1,7 @@
 /**
  * Oprávnění domény profilů (T007). Registrují se přes `definePermission` při
- * načtení modulu (side-effect import v service/queries), takže jdou evaluovat
- * přes `can()`. Modul je čistý — žádná DB, jen rozhodovací logika nad `Actor`.
+ * načtení modulu (import v actions/queries), takže jdou evaluovat přes `can()`.
+ * Modul je čistý — žádná DB, jen rozhodovací logika nad `Actor`.
  *
  * Pravidlo (T007 § Permissions): editovat smí jen vlastník s rolí professional;
  * číst lze publikovaný profil kdokoli, draft jen vlastník.
@@ -9,6 +9,7 @@
 
 import {
   type Actor,
+  can,
   definePermission,
   hasRole,
   isPermissionDefined,
@@ -44,6 +45,5 @@ if (!isPermissionDefined(P_PROFILE_VIEW)) {
  * je veřejný. (Veřejná route přijde v T008, tady jen vynucujeme viditelnost.)
  */
 export function canViewProfile(actor: Actor, subject: ProfileSubject): boolean {
-  if (subject.status === "published") return true;
-  return isUser(actor) && actor.userId === subject.ownerId;
+  return can(actor, P_PROFILE_VIEW, subject);
 }

@@ -166,13 +166,22 @@ export function ProfileEditor({
               disabled={pending}
               onCheckedChange={(c) => {
                 const next = c === true;
+                // Optimisticky přepni; při zamítnutí serverem (rule guard)
+                // vrať zpět, ať UI nelže o uloženém stavu.
                 set("acceptingRequests", next);
-                run(
-                  () => toggleAcceptingRequests({ accepting: next }),
-                  next
-                    ? "Přijímáte poptávky."
-                    : "Příjem poptávek vypnut.",
-                );
+                startTransition(async () => {
+                  const result = await toggleAcceptingRequests({
+                    accepting: next,
+                  });
+                  if (result.ok) {
+                    toast.success(
+                      next ? "Přijímáte poptávky." : "Příjem poptávek vypnut.",
+                    );
+                  } else {
+                    set("acceptingRequests", !next);
+                    toast.error(result.message);
+                  }
+                });
               }}
             />
             <div>

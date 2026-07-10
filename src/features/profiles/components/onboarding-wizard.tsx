@@ -27,7 +27,6 @@ import {
   type ProfessionLink,
 } from "../types";
 import {
-  publishProfileAction,
   saveOnboardingAvailability,
   saveOnboardingLocation,
   saveOnboardingSpecializations,
@@ -35,7 +34,6 @@ import {
   saveProfessions,
 } from "../actions";
 import type { ProfileActionResult } from "../actions";
-import { canPublish } from "../rules";
 import { ListField } from "./list-field";
 import {
   ProfessionPicker,
@@ -97,23 +95,6 @@ export function OnboardingWizard({
       setStep(nextStep);
     });
   }
-
-  function publishNow() {
-    startTransition(async () => {
-      const result = await publishProfileAction();
-      if (result.ok) {
-        toast.success("Profil publikován.");
-        router.push("/profile");
-      } else {
-        toast.error(result.message);
-      }
-    });
-  }
-
-  const publishable = canPublish({
-    headline: null, // titulek se zadává v editoru; z wizardu vede „Dokončit".
-    professionCount: professions.length,
-  });
 
   return (
     <Card>
@@ -203,25 +184,13 @@ export function OnboardingWizard({
           >
             Přeskočit
           </Button>
-          <div className="flex gap-2">
-            {step === STEPS.length - 1 && publishable && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={pending}
-                onClick={publishNow}
-              >
-                Publikovat
-              </Button>
-            )}
-            <Button
-              type="button"
-              disabled={pending}
-              onClick={() => advance(stepSave())}
-            >
-              {step === STEPS.length - 1 ? "Dokončit" : "Uložit a pokračovat"}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={() => advance(stepSave())}
+          >
+            {step === STEPS.length - 1 ? "Dokončit" : "Uložit a pokračovat"}
+          </Button>
         </div>
       </CardContent>
     </Card>
