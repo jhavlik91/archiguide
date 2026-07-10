@@ -1,6 +1,6 @@
 # T008 — Profesionální profil — veřejná stránka
 
-**Track:** B (profily) | **Závislosti:** T007 | **Assignee:** —
+**Track:** B (profily) | **Závislosti:** T007 | **Assignee:** Claude Code
 
 ## Goal
 Veřejná stránka profesionála na `(public)` route — vizitka s odborností, dostupností a sloty pro portfolio/hodnocení/služby.

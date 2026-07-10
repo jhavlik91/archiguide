@@ -13,10 +13,15 @@ export type AnalyticsEvent =
   | "profile.created"
   | "profile.published"
   | "profile.accepting_requests_toggled"
+  // Veřejná stránka profilu (T008)
+  | "profile.viewed"
   // Organizace (T009)
   | "org.created"
   | "org.member_invited"
-  | "org.member_joined";
+  | "org.member_joined"
+  // Verifikace (T011)
+  | "verification.email_completed"
+  | "verification.phone_completed";
 
 export function trackEvent(
   event: AnalyticsEvent,

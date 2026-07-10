@@ -36,7 +36,7 @@ model User {
   locale String     @default("cs")
 
   /// Kontaktní preference (kanály, viditelnost kontaktu). Detail dořeší domény.
-  contactPreferences Json @default("{}")
+  contactPreferences      Json @default("{}")
   /// Notifikační preference per kanál/typ. Detail dořeší T011/T065.
   notificationPreferences Json @default("{}")
 
@@ -44,12 +44,13 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Back-relace vlastněné jinými doménami (nepřidávají sloupec do `users`).
-  credential          Credential?          // T003
-  authAccounts        AuthAccount[]        // T003
+  credential          Credential? // T003
+  authAccounts        AuthAccount[] // T003
   passwordResetTokens PasswordResetToken[] // T003
-  roles               UserRole[]           // T004
+  roles               UserRole[] // T004
   professionalProfile ProfessionalProfile? // T007
   orgMemberships      OrganizationMember[] // T009
+  verifications       Verification[] // T011
 
   @@map("users")
 }
@@ -121,10 +122,10 @@ enum TaxonomyStatus {
 
 /// Hlavní profesní kategorie (např. „Architecture & Design").
 model ProfessionCategory {
-  id   String @id @default(cuid())
+  id       String @id @default(cuid())
   /// Stabilní strojově čitelný identifikátor pro URL a odkazy.
-  slug String @unique
-  name String
+  slug     String @unique
+  name     String
   /// Pořadí pro zobrazení stromu (dle pořadí ve specifikaci).
   position Int
 
@@ -138,18 +139,18 @@ model ProfessionCategory {
 
 /// Konkrétní profese. Vždy patří do právě jedné kategorie.
 model Profession {
-  id   String @id @default(cuid())
-  slug String @unique
-  name String
+  id                String         @id @default(cuid())
+  slug              String         @unique
+  name              String
   /// Alternativní názvy pro vyhledávání (např. „topenář" ↔ „topení").
-  synonyms String[]
+  synonyms          String[]
   /// Regulovaná profese (vyžaduje autorizaci/oprávnění).
-  regulated Boolean @default(false)
+  regulated         Boolean        @default(false)
   /// Nápovědy k požadovanému ověření (např. autorizace ČKA/ČKAIT).
   verificationHints String[]
-  status   TaxonomyStatus @default(active)
+  status            TaxonomyStatus @default(active)
   /// Pořadí v rámci kategorie.
-  position Int
+  position          Int
 
   categoryId String
   category   ProfessionCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -264,23 +265,23 @@ model ProfessionalProfile {
 
   // Základní informace (legacy-master-spec §22.1)
   /// Titulek profilu, max 120 znaků (validováno v appce).
-  headline String?
+  headline     String?
   /// Odkaz na profilovou fotku. Vlastní upload řeší T014; zde jen URL.
-  photoUrl String?
-  bio      String?
+  photoUrl     String?
+  bio          String?
   /// Lokalita (město/obec) profesionála.
-  location String?
+  location     String?
   /// Regiony působnosti (volný číselník).
   serviceAreas String[]
   /// Jazyky, kterými profesionál komunikuje.
-  languages String[]
+  languages    String[]
 
   // Odbornost (legacy-master-spec §22.2)
   yearsOfExperience Int?
   /// Užší specializace (volný text; taxonomie Specialization zatím bez dat).
-  specializations String[]
+  specializations   String[]
   /// Typy projektů, na které se profesionál zaměřuje.
-  projectTypes String[]
+  projectTypes      String[]
 
   // Dostupnost a spolupráce (§22.1)
   availability       Availability?
@@ -289,15 +290,18 @@ model ProfessionalProfile {
   // Ceny (§22)
   pricingModel PricingModel?
   /// Doplňující poznámka k cenám (např. „od 1 500 Kč/h").
-  pricingNote String?
+  pricingNote  String?
 
   // Stav a onboarding
-  status ProfileStatus @default(draft)
+  status            ProfileStatus @default(draft)
   /// Nezávislý přepínač „přijímám poptávky". Aktivovatelný jen s ≥1 profesí.
-  acceptingRequests Boolean @default(false)
+  acceptingRequests Boolean       @default(false)
   /// Poslední dokončený krok onboarding wizardu (0 = nezačato). Umožní návrat.
-  onboardingStep Int @default(0)
-  publishedAt    DateTime?
+  onboardingStep    Int           @default(0)
+  publishedAt       DateTime?
+  /// Veřejná URL část profilu (`/profesional/[slug]`). Generuje se z titulku při
+  /// první publikaci a dál se nemění (stabilní odkaz). Draft ho ještě nemá. (T008)
+  slug              String?       @unique
 
   professions ProfileProfession[]
 
@@ -318,8 +322,8 @@ model ProfileProfession {
   professionId String
   profession   Profession          @relation(fields: [professionId], references: [id], onDelete: Restrict)
   /// Hlavní profese profilu (právě jedna). Ostatní jsou vedlejší.
-  isPrimary Boolean  @default(false)
-  createdAt DateTime @default(now())
+  isPrimary    Boolean             @default(false)
+  createdAt    DateTime            @default(now())
 
   @@unique([profileId, professionId])
   @@index([professionId])
@@ -368,16 +372,16 @@ enum OrgInvitationStatus {
 model Organization {
   id String @id @default(cuid())
 
-  name String
+  name            String
   /// Odkaz na logo. Vlastní upload řeší T014; zde jen URL.
-  logoUrl     String?
-  description String?
+  logoUrl         String?
+  description     String?
   /// IČO (business identity). Volitelné; duplicita je jen warning, ne blok.
-  businessId String?
+  businessId      String?
   /// Sídlo firmy (město/obec).
-  location String?
+  location        String?
   /// Regiony působnosti (volný číselník).
-  serviceAreas String[]
+  serviceAreas    String[]
   /// Specializace firmy (volný číselník).
   specializations String[]
 
@@ -434,11 +438,80 @@ model OrganizationInvitation {
   invitedByUserId String?
   expiresAt       DateTime
   /// Kdy pozvaný odpověděl (accepted/declined).
-  respondedAt DateTime?
+  respondedAt     DateTime?
 
   createdAt DateTime @default(now())
 
   @@index([orgId])
   @@index([email])
   @@map("organization_invitations")
+}
+
+// ---------------------------------------------------------------------------
+// Verifikace (T011)
+//
+// Ověřovací záznam per (uživatel, typ). MVP implementuje `email` a `phone`;
+// ostatní typy (identita, firma, kvalifikace, autorizace, pojištění) jsou zatím
+// jen v enumu — na tuto infrastrukturu navážou vyšší úrovně (viz
+// zadani/legacy-master-spec.md §37). Ověřovaný kontakt (`value`) je soukromý;
+// veřejně čitelný je jen stav jako badge, který kontakt nikdy nezobrazuje.
+// Absence záznamu = `unverified`. Vazba na cizí model User je FK ze svého modelu.
+// ---------------------------------------------------------------------------
+
+/// Co se ověřuje. MVP: `email`, `phone`. Ostatní typy jsou vyhrazené pro
+/// finální produkt (identita/firma/autorizace/pojištění) a zatím se nepoužívají.
+enum VerificationType {
+  email
+  phone
+  identity
+  business
+  qualification
+  authorization
+  insurance
+}
+
+/// Stav ověření. `unverified` je reprezentován absencí záznamu; jakmile výzva
+/// vznikne, řádek existuje ve stavu `pending`. `expired` u časově omezených výzev.
+enum VerificationStatus {
+  pending
+  verified
+  expired
+}
+
+/// Ověření jednoho kontaktu uživatele. Právě jeden řádek na (userId, type) —
+/// nová žádost o ověření existující řádek přepíše (změna kontaktu = reset).
+model Verification {
+  id     String             @id @default(cuid())
+  userId String
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   VerificationType
+  status VerificationStatus @default(pending)
+
+  /// Ověřovaný kontakt (e-mail / telefon v E.164). Soukromý — badge ho nikdy
+  /// nezobrazuje. Umožňuje detekovat změnu kontaktu (verifikace se pak resetuje)
+  /// a drží telefon, který na User modelu (T002) není.
+  value String
+
+  /// SHA-256 hash tajemství výzvy: u `email` token z odkazu, u `phone` 6místný
+  /// kód. Plaintext nikdy v DB. `null` po dokončení nebo než vznikne výzva.
+  secretHash String?
+  /// Expirace aktuální výzvy (telefon: 10 min, e-mail odkaz: delší).
+  expiresAt  DateTime?
+  /// Počet neúspěšných pokusů o zadání kódu (telefon). Limit dle konstanty.
+  attempts   Int       @default(0)
+
+  /// Kdy byla poslední výzva vydána a kdy (pokud) bylo ověření dokončeno.
+  issuedAt   DateTime  @default(now())
+  verifiedAt DateTime?
+
+  /// Poznámky z ručního review (identita/firma). MVP nevyužito — připraveno pro
+  /// pozdější admin verifikační frontu (out of scope T011).
+  reviewNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+  @@index([userId])
+  @@map("verifications")
 }
