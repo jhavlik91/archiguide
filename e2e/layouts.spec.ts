@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { STORAGE_STATE } from "./auth-helpers";
+import { ADMIN_STATE, STORAGE_STATE } from "./auth-helpers";
 
 const MOBILE = { width: 360, height: 740 };
 const DESKTOP = { width: 1280, height: 800 };
@@ -77,7 +77,8 @@ test.describe("App layout", () => {
 });
 
 test.describe("Admin layout", () => {
-  test.use({ storageState: STORAGE_STATE });
+  // (admin) je chráněná rolí (T004) — potřebuje admin session.
+  test.use({ storageState: ADMIN_STATE });
 
   test("renders the admin shell on desktop", async ({ page }) => {
     await page.setViewportSize(DESKTOP);

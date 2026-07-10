@@ -5,7 +5,10 @@
  */
 
 export type AnalyticsEvent =
-  "auth.registered" | "auth.login" | "auth.password_reset";
+  | "auth.registered"
+  | "auth.login"
+  | "auth.password_reset"
+  | "role.context_switched";
 
 export function trackEvent(
   event: AnalyticsEvent,

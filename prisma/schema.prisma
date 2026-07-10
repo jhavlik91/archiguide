@@ -47,6 +47,7 @@ model User {
   credential          Credential?          // T003
   authAccounts        AuthAccount[]        // T003
   passwordResetTokens PasswordResetToken[] // T003
+  roles               UserRole[]           // T004
 
   @@map("users")
 }
@@ -177,4 +178,37 @@ model Specialization {
 
   @@index([professionId])
   @@map("specializations")
+}
+
+// ---------------------------------------------------------------------------
+// Role model (T004)
+//
+// Systémové role uživatele. Jeden účet může mít víc rolí současně (multi-role,
+// viz zadani/05-permission-matrix.md). Role se nikdy necachují v JWT bez
+// expirace — čtou se per-request přes lib/session.ts, aby se ztráta role
+// projevila okamžitě. Firemní role (owner/editor/…) řeší T009 samostatně.
+// ---------------------------------------------------------------------------
+
+/// Globální systémová role. Doménová/firemní oprávnění stojí nad těmito rolemi.
+enum Role {
+  client
+  professional
+  moderator
+  admin
+}
+
+/// Přiřazení role uživateli (M:N přes vlastní model). Role přiděluje admin,
+/// kromě self-service `client`/`professional` při onboardingu (T004 § Validation).
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role
+  /// Kdo roli přidělil (admin) — audit. `null` = self-service onboarding.
+  grantedBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, role])
+  @@index([userId])
+  @@map("user_roles")
 }
