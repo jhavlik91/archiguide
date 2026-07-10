@@ -49,6 +49,7 @@ model User {
   passwordResetTokens PasswordResetToken[] // T003
   roles               UserRole[]           // T004
   professionalProfile ProfessionalProfile? // T007
+  orgMemberships      OrganizationMember[] // T009
 
   @@map("users")
 }
@@ -323,4 +324,121 @@ model ProfileProfession {
   @@unique([profileId, professionId])
   @@index([professionId])
   @@map("profile_professions")
+}
+
+// ---------------------------------------------------------------------------
+// Organizace (T009)
+//
+// Firemní profil s více členy a interními rolemi (owner/admin/editor/member).
+// Jedna osoba může být členem víc firem (M:N přes `OrganizationMember`); žádný
+// předpoklad „jedna firma na uživatele" (viz zadani/16 §11). Interní role firmy
+// stojí NAD systémovými rolemi z T004 — vynucují se přes lib/permissions.ts nad
+// členstvím, ne přes globální role. Invariant „min. 1 owner" se drží v service
+// vrstvě (transakce + počet ownerů), ne DB constraintem (víc ownerů je validní).
+// Recruiter/sales role a pobočky jsou post-MVP (mimo scope). Veřejná stránka: T010.
+// ---------------------------------------------------------------------------
+
+/// Životní cyklus firmy. `archived` firma zůstává, ale je skrytá/neaktivní.
+enum OrgStatus {
+  active
+  archived
+}
+
+/// Interní role člena ve firmě. Hierarchie: owner > admin > editor > member.
+/// owner: vše (vč. předání vlastnictví, archivace); admin: členové + profil;
+/// editor: profil; member: čtení interních dat. Recruiter/sales až po MVP.
+enum OrgRole {
+  owner
+  admin
+  editor
+  member
+}
+
+/// Stav pozvánky. `pending` → `accepted`/`declined`; `expired` je odvozený stav
+/// (po 14 dnech), počítá se ze `expiresAt` — v DB může zůstat `pending`.
+enum OrgInvitationStatus {
+  pending
+  accepted
+  declined
+  expired
+}
+
+/// Firemní profil. Drží prezentaci a business identitu; členy a role řeší
+/// `OrganizationMember`. Zakladatel se při vzniku stává ownerem (service vrstva).
+model Organization {
+  id String @id @default(cuid())
+
+  name String
+  /// Odkaz na logo. Vlastní upload řeší T014; zde jen URL.
+  logoUrl     String?
+  description String?
+  /// IČO (business identity). Volitelné; duplicita je jen warning, ne blok.
+  businessId String?
+  /// Sídlo firmy (město/obec).
+  location String?
+  /// Regiony působnosti (volný číselník).
+  serviceAreas String[]
+  /// Specializace firmy (volný číselník).
+  specializations String[]
+
+  status OrgStatus @default(active)
+
+  members     OrganizationMember[]
+  invitations OrganizationInvitation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@map("organizations")
+}
+
+/// Členství uživatele ve firmě s interní rolí (M:N user↔org). Unikát na
+/// dvojici (org, user) — jeden uživatel má ve firmě právě jednu roli.
+model OrganizationMember {
+  id    String       @id @default(cuid())
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   OrgRole @default(member)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+/// Pozvánka nového člena e-mailem. V DB jen SHA-256 hash tokenu; plaintext jde
+/// pouze e-mailem (stejný princip jako PasswordResetToken z T003). Existující
+/// účet se po přihlášení připojí, neexistující projde registrací a pak se
+/// připojí (řízeno návratovou URL po loginu). `invitedByUserId` je audit (bez
+/// relace, jako `UserRole.grantedBy`). Expirace 14 dní.
+model OrganizationInvitation {
+  id    String       @id @default(cuid())
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// E-mail pozvaného (case-insensitive přes citext, jako User.email).
+  email String  @db.Citext
+  role  OrgRole @default(member)
+
+  /// SHA-256 hash pozvánkového tokenu (plaintext jen v e-mailu).
+  tokenHash String              @unique
+  status    OrgInvitationStatus @default(pending)
+
+  /// Kdo pozval (audit). Bez relace na User — jen ID.
+  invitedByUserId String?
+  expiresAt       DateTime
+  /// Kdy pozvaný odpověděl (accepted/declined).
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([email])
+  @@map("organization_invitations")
 }

@@ -4,6 +4,7 @@ import {
   MessageSquare,
   FolderKanban,
   User,
+  Building2,
   Settings,
 } from "lucide-react";
 import { AppShell, type AppNavItem } from "@/components/layout/app-shell";
@@ -24,6 +25,7 @@ const NAV_ITEMS: AppNavItem[] = [
   { label: "Zprávy", href: "/messages", icon: <MessageSquare /> },
   { label: "Portfolio", href: "/portfolio", icon: <FolderKanban /> },
   { label: "Profil", href: "/profile", icon: <User /> },
+  { label: "Firmy", href: "/organizations", icon: <Building2 /> },
   { label: "Nastavení", href: "/settings", icon: <Settings /> },
 ];
 

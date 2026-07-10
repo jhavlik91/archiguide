@@ -12,7 +12,11 @@ export type AnalyticsEvent =
   // Profesionální profil (T007)
   | "profile.created"
   | "profile.published"
-  | "profile.accepting_requests_toggled";
+  | "profile.accepting_requests_toggled"
+  // Organizace (T009)
+  | "org.created"
+  | "org.member_invited"
+  | "org.member_joined";
 
 export function trackEvent(
   event: AnalyticsEvent,
