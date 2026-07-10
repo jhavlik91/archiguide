@@ -14,7 +14,10 @@ export type AnalyticsEvent =
   | "profile.published"
   | "profile.accepting_requests_toggled"
   // Veřejná stránka profilu (T008)
-  | "profile.viewed";
+  | "profile.viewed"
+  // Verifikace (T011)
+  | "verification.email_completed"
+  | "verification.phone_completed";
 
 export function trackEvent(
   event: AnalyticsEvent,

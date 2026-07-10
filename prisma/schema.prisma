@@ -49,6 +49,7 @@ model User {
   passwordResetTokens PasswordResetToken[] // T003
   roles               UserRole[]           // T004
   professionalProfile ProfessionalProfile? // T007
+  verifications       Verification[]       // T011
 
   @@map("users")
 }
@@ -326,4 +327,73 @@ model ProfileProfession {
   @@unique([profileId, professionId])
   @@index([professionId])
   @@map("profile_professions")
+}
+
+// ---------------------------------------------------------------------------
+// Verifikace (T011)
+//
+// Ověřovací záznam per (uživatel, typ). MVP implementuje `email` a `phone`;
+// ostatní typy (identita, firma, kvalifikace, autorizace, pojištění) jsou zatím
+// jen v enumu — na tuto infrastrukturu navážou vyšší úrovně (viz
+// zadani/legacy-master-spec.md §37). Ověřovaný kontakt (`value`) je soukromý;
+// veřejně čitelný je jen stav jako badge, který kontakt nikdy nezobrazuje.
+// Absence záznamu = `unverified`. Vazba na cizí model User je FK ze svého modelu.
+// ---------------------------------------------------------------------------
+
+/// Co se ověřuje. MVP: `email`, `phone`. Ostatní typy jsou vyhrazené pro
+/// finální produkt (identita/firma/autorizace/pojištění) a zatím se nepoužívají.
+enum VerificationType {
+  email
+  phone
+  identity
+  business
+  qualification
+  authorization
+  insurance
+}
+
+/// Stav ověření. `unverified` je reprezentován absencí záznamu; jakmile výzva
+/// vznikne, řádek existuje ve stavu `pending`. `expired` u časově omezených výzev.
+enum VerificationStatus {
+  pending
+  verified
+  expired
+}
+
+/// Ověření jednoho kontaktu uživatele. Právě jeden řádek na (userId, type) —
+/// nová žádost o ověření existující řádek přepíše (změna kontaktu = reset).
+model Verification {
+  id     String             @id @default(cuid())
+  userId String
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   VerificationType
+  status VerificationStatus @default(pending)
+
+  /// Ověřovaný kontakt (e-mail / telefon v E.164). Soukromý — badge ho nikdy
+  /// nezobrazuje. Umožňuje detekovat změnu kontaktu (verifikace se pak resetuje)
+  /// a drží telefon, který na User modelu (T002) není.
+  value String
+
+  /// SHA-256 hash tajemství výzvy: u `email` token z odkazu, u `phone` 6místný
+  /// kód. Plaintext nikdy v DB. `null` po dokončení nebo než vznikne výzva.
+  secretHash String?
+  /// Expirace aktuální výzvy (telefon: 10 min, e-mail odkaz: delší).
+  expiresAt DateTime?
+  /// Počet neúspěšných pokusů o zadání kódu (telefon). Limit dle konstanty.
+  attempts Int @default(0)
+
+  /// Kdy byla poslední výzva vydána a kdy (pokud) bylo ověření dokončeno.
+  issuedAt   DateTime  @default(now())
+  verifiedAt DateTime?
+
+  /// Poznámky z ručního review (identita/firma). MVP nevyužito — připraveno pro
+  /// pozdější admin verifikační frontu (out of scope T011).
+  reviewNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+  @@index([userId])
+  @@map("verifications")
 }
