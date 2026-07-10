@@ -18,8 +18,10 @@ export default async function OpengraphImage({
 }) {
   const { slug } = await params;
   const profile = await getPublicProfileBySlug(slug);
-  // Nezveřejněný profil OG kartu nedostane — jen obecný branding.
-  const visible = profile?.status === "published";
+  // Nezveřejněný profil (draft i deaktivovaný/smazaný vlastník — stejná
+  // pravidla jako stránka, viz resolvePublicView) OG kartu nedostane.
+  const visible =
+    profile?.status === "published" && profile.user.status === "active";
   const title = (visible && profile?.headline?.trim()) || "ArchiGuide";
   const primary =
     (visible &&
