@@ -15,6 +15,12 @@ export type AnalyticsEvent =
   | "profile.accepting_requests_toggled"
   // Veřejná stránka profilu (T008)
   | "profile.viewed"
+  // Organizace (T009)
+  | "org.created"
+  | "org.member_invited"
+  | "org.member_joined"
+  // Organizace — veřejná stránka (T010)
+  | "org.viewed"
   // Verifikace (T011)
   | "verification.email_completed"
   | "verification.phone_completed"

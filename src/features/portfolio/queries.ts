@@ -2,6 +2,8 @@ import "server-only";
 
 import { getActor } from "@/lib/session";
 import { type Actor } from "@/lib/permissions";
+import { roleAtLeast } from "@/features/organizations/rules";
+import { getMembershipRole } from "@/features/organizations/service";
 import {
   canEditPortfolio,
   canViewPortfolio,
@@ -22,10 +24,8 @@ import {
  * Čtecí vrstva portfolia (T012) pro stránky/akce. Vynucuje viditelnost draftu
  * (jen editoři a pozvaní spoluautoři) a sestavuje permission `subject` z DB.
  *
- * Firemní vlastnictví: konkrétní roli actora v organizaci dodá T009 přes
- * `__setOrgMembershipResolver`. Dokud není zapojen, org-owned díla nejsou pro
- * běžné uživatele editovatelná (jen systémový admin) — T012 zůstává nezávislé
- * na (nezmergeovaném) modulu organizací.
+ * Firemní vlastnictví: role actora v organizaci se čte z modulu organizací
+ * (T009) — členství → čtení draftu, editor+ → editace (matice T009).
  */
 
 export type OrgMembership = { isMember: boolean; isEditor: boolean };
@@ -33,16 +33,19 @@ export type OrgMembership = { isMember: boolean; isEditor: boolean };
 let orgMembershipResolver: (
   orgId: string,
   userId: string,
-) => Promise<OrgMembership> = async () => ({ isMember: false, isEditor: false });
+) => Promise<OrgMembership> = async (orgId, userId) => {
+  const role = await getMembershipRole(orgId, userId);
+  return { isMember: role !== null, isEditor: roleAtLeast(role, "editor") };
+};
 
-/** T009 (a testy) zapojí zjištění firemní role actora ve vlastníkovské organizaci. */
+/** Testy si můžou zjištění firemní role actora podvrhnout. */
 export function __setOrgMembershipResolver(
   resolver: (orgId: string, userId: string) => Promise<OrgMembership>,
 ): void {
   orgMembershipResolver = resolver;
 }
 
-/** Firemní role actora v organizaci přes zapojený resolver (default: nečlen). */
+/** Firemní role actora v organizaci (přes resolver, ať jde v testech podvrhnout). */
 export function resolveOrgMembership(
   orgId: string,
   userId: string,

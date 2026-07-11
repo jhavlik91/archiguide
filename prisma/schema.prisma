@@ -36,7 +36,7 @@ model User {
   locale String     @default("cs")
 
   /// Kontaktní preference (kanály, viditelnost kontaktu). Detail dořeší domény.
-  contactPreferences Json @default("{}")
+  contactPreferences      Json @default("{}")
   /// Notifikační preference per kanál/typ. Detail dořeší T011/T065.
   notificationPreferences Json @default("{}")
 
@@ -44,14 +44,15 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Back-relace vlastněné jinými doménami (nepřidávají sloupec do `users`).
-  credential          Credential?          // T003
-  authAccounts        AuthAccount[]        // T003
+  credential          Credential? // T003
+  authAccounts        AuthAccount[] // T003
   passwordResetTokens PasswordResetToken[] // T003
-  roles               UserRole[]           // T004
+  roles               UserRole[] // T004
   professionalProfile ProfessionalProfile? // T007
-  verifications       Verification[]       // T011
-  portfolioProjects   PortfolioProject[]   // T012 (owner = uživatel)
-  portfolioCoauthors  PortfolioCoauthor[]  // T012 (uvedení jako spoluautor)
+  orgMemberships      OrganizationMember[] // T009
+  verifications       Verification[] // T011
+  portfolioProjects   PortfolioProject[] // T012 (owner = uživatel)
+  portfolioCoauthors  PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
 
   @@map("users")
 }
@@ -123,10 +124,10 @@ enum TaxonomyStatus {
 
 /// Hlavní profesní kategorie (např. „Architecture & Design").
 model ProfessionCategory {
-  id   String @id @default(cuid())
+  id       String @id @default(cuid())
   /// Stabilní strojově čitelný identifikátor pro URL a odkazy.
-  slug String @unique
-  name String
+  slug     String @unique
+  name     String
   /// Pořadí pro zobrazení stromu (dle pořadí ve specifikaci).
   position Int
 
@@ -140,18 +141,18 @@ model ProfessionCategory {
 
 /// Konkrétní profese. Vždy patří do právě jedné kategorie.
 model Profession {
-  id   String @id @default(cuid())
-  slug String @unique
-  name String
+  id                String         @id @default(cuid())
+  slug              String         @unique
+  name              String
   /// Alternativní názvy pro vyhledávání (např. „topenář" ↔ „topení").
-  synonyms String[]
+  synonyms          String[]
   /// Regulovaná profese (vyžaduje autorizaci/oprávnění).
-  regulated Boolean @default(false)
+  regulated         Boolean        @default(false)
   /// Nápovědy k požadovanému ověření (např. autorizace ČKA/ČKAIT).
   verificationHints String[]
-  status   TaxonomyStatus @default(active)
+  status            TaxonomyStatus @default(active)
   /// Pořadí v rámci kategorie.
-  position Int
+  position          Int
 
   categoryId String
   category   ProfessionCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -266,23 +267,23 @@ model ProfessionalProfile {
 
   // Základní informace (legacy-master-spec §22.1)
   /// Titulek profilu, max 120 znaků (validováno v appce).
-  headline String?
+  headline     String?
   /// Odkaz na profilovou fotku. Vlastní upload řeší T014; zde jen URL.
-  photoUrl String?
-  bio      String?
+  photoUrl     String?
+  bio          String?
   /// Lokalita (město/obec) profesionála.
-  location String?
+  location     String?
   /// Regiony působnosti (volný číselník).
   serviceAreas String[]
   /// Jazyky, kterými profesionál komunikuje.
-  languages String[]
+  languages    String[]
 
   // Odbornost (legacy-master-spec §22.2)
   yearsOfExperience Int?
   /// Užší specializace (volný text; taxonomie Specialization zatím bez dat).
-  specializations String[]
+  specializations   String[]
   /// Typy projektů, na které se profesionál zaměřuje.
-  projectTypes String[]
+  projectTypes      String[]
 
   // Dostupnost a spolupráce (§22.1)
   availability       Availability?
@@ -291,18 +292,18 @@ model ProfessionalProfile {
   // Ceny (§22)
   pricingModel PricingModel?
   /// Doplňující poznámka k cenám (např. „od 1 500 Kč/h").
-  pricingNote String?
+  pricingNote  String?
 
   // Stav a onboarding
-  status ProfileStatus @default(draft)
+  status            ProfileStatus @default(draft)
   /// Nezávislý přepínač „přijímám poptávky". Aktivovatelný jen s ≥1 profesí.
-  acceptingRequests Boolean @default(false)
+  acceptingRequests Boolean       @default(false)
   /// Poslední dokončený krok onboarding wizardu (0 = nezačato). Umožní návrat.
-  onboardingStep Int @default(0)
-  publishedAt    DateTime?
+  onboardingStep    Int           @default(0)
+  publishedAt       DateTime?
   /// Veřejná URL část profilu (`/profesional/[slug]`). Generuje se z titulku při
   /// první publikaci a dál se nemění (stabilní odkaz). Draft ho ještě nemá. (T008)
-  slug String? @unique
+  slug              String?       @unique
 
   professions ProfileProfession[]
 
@@ -323,12 +324,149 @@ model ProfileProfession {
   professionId String
   profession   Profession          @relation(fields: [professionId], references: [id], onDelete: Restrict)
   /// Hlavní profese profilu (právě jedna). Ostatní jsou vedlejší.
-  isPrimary Boolean  @default(false)
-  createdAt DateTime @default(now())
+  isPrimary    Boolean             @default(false)
+  createdAt    DateTime            @default(now())
 
   @@unique([profileId, professionId])
   @@index([professionId])
   @@map("profile_professions")
+}
+
+// ---------------------------------------------------------------------------
+// Organizace (T009)
+//
+// Firemní profil s více členy a interními rolemi (owner/admin/editor/member).
+// Jedna osoba může být členem víc firem (M:N přes `OrganizationMember`); žádný
+// předpoklad „jedna firma na uživatele" (viz zadani/16 §11). Interní role firmy
+// stojí NAD systémovými rolemi z T004 — vynucují se přes lib/permissions.ts nad
+// členstvím, ne přes globální role. Invariant „min. 1 owner" se drží v service
+// vrstvě (transakce + počet ownerů), ne DB constraintem (víc ownerů je validní).
+// Recruiter/sales role a pobočky jsou post-MVP (mimo scope). Veřejná stránka: T010.
+// ---------------------------------------------------------------------------
+
+/// Životní cyklus firmy. `archived` firma zůstává, ale je skrytá/neaktivní.
+enum OrgStatus {
+  active
+  archived
+}
+
+/// Interní role člena ve firmě. Hierarchie: owner > admin > editor > member.
+/// owner: vše (vč. předání vlastnictví, archivace); admin: členové + profil;
+/// editor: profil; member: čtení interních dat. Recruiter/sales až po MVP.
+enum OrgRole {
+  owner
+  admin
+  editor
+  member
+}
+
+/// Stav pozvánky. `pending` → `accepted`/`declined`; `expired` je odvozený stav
+/// (po 14 dnech), počítá se ze `expiresAt` — v DB může zůstat `pending`.
+enum OrgInvitationStatus {
+  pending
+  accepted
+  declined
+  expired
+}
+
+/// Firemní profil. Drží prezentaci a business identitu; členy a role řeší
+/// `OrganizationMember`. Zakladatel se při vzniku stává ownerem (service vrstva).
+model Organization {
+  id String @id @default(cuid())
+
+  name            String
+  /// Stabilní veřejný slug pro `/firma/[slug]` (T010). Vzniká z názvu při
+  /// založení, dál se nemění, aby veřejný odkaz zůstal stabilní. Nullable kvůli
+  /// firmám z T009 založeným před migrací; nová firma ho vždy dostane.
+  slug            String?  @unique
+  /// Odkaz na logo. Vlastní upload řeší T014; zde jen URL.
+  logoUrl         String?
+  description     String?
+  /// IČO (business identity). Volitelné; duplicita je jen warning, ne blok.
+  businessId      String?
+  /// Sídlo firmy (město/obec).
+  location        String?
+  /// Regiony působnosti (volný číselník).
+  serviceAreas    String[]
+  /// Specializace firmy (volný číselník).
+  specializations String[]
+
+  // Veřejný kontakt (T010). Zobrazí se na veřejné stránce, jen když je vyplněný —
+  // „firemní kontakt jen pokud jej owner explicitně zveřejní" (T010 § Permissions).
+  // Kontakty jednotlivých členů se veřejně nikdy nezobrazují.
+  /// Veřejný kontaktní e-mail firmy (opt-in — prázdné = nezveřejněno).
+  publicEmail   String?
+  /// Veřejný kontaktní telefon firmy (opt-in).
+  publicPhone   String?
+  /// Veřejný web firmy (opt-in).
+  publicWebsite String?
+
+  status OrgStatus @default(active)
+
+  members           OrganizationMember[]
+  invitations       OrganizationInvitation[]
+  portfolioProjects PortfolioProject[] // T012 (owner = organizace)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@map("organizations")
+}
+
+/// Členství uživatele ve firmě s interní rolí (M:N user↔org). Unikát na
+/// dvojici (org, user) — jeden uživatel má ve firmě právě jednu roli.
+model OrganizationMember {
+  id    String       @id @default(cuid())
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   OrgRole @default(member)
+
+  /// Opt-in člena k zobrazení ve veřejném týmu firmy (T010). Default `false` —
+  /// členství je veřejně skryté, dokud ho člen sám nezveřejní. Skrytí členství
+  /// = přepnout zpět na `false` (T010 alternative flow).
+  publicVisible Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+/// Pozvánka nového člena e-mailem. V DB jen SHA-256 hash tokenu; plaintext jde
+/// pouze e-mailem (stejný princip jako PasswordResetToken z T003). Existující
+/// účet se po přihlášení připojí, neexistující projde registrací a pak se
+/// připojí (řízeno návratovou URL po loginu). `invitedByUserId` je audit (bez
+/// relace, jako `UserRole.grantedBy`). Expirace 14 dní.
+model OrganizationInvitation {
+  id    String       @id @default(cuid())
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// E-mail pozvaného (case-insensitive přes citext, jako User.email).
+  email String  @db.Citext
+  role  OrgRole @default(member)
+
+  /// SHA-256 hash pozvánkového tokenu (plaintext jen v e-mailu).
+  tokenHash String              @unique
+  status    OrgInvitationStatus @default(pending)
+
+  /// Kdo pozval (audit). Bez relace na User — jen ID.
+  invitedByUserId String?
+  expiresAt       DateTime
+  /// Kdy pozvaný odpověděl (accepted/declined).
+  respondedAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([email])
+  @@map("organization_invitations")
 }
 
 // ---------------------------------------------------------------------------
@@ -380,9 +518,9 @@ model Verification {
   /// kód. Plaintext nikdy v DB. `null` po dokončení nebo než vznikne výzva.
   secretHash String?
   /// Expirace aktuální výzvy (telefon: 10 min, e-mail odkaz: delší).
-  expiresAt DateTime?
+  expiresAt  DateTime?
   /// Počet neúspěšných pokusů o zadání kódu (telefon). Limit dle konstanty.
-  attempts Int @default(0)
+  attempts   Int       @default(0)
 
   /// Kdy byla poslední výzva vydána a kdy (pokud) bylo ověření dokončeno.
   issuedAt   DateTime  @default(now())
@@ -406,9 +544,7 @@ model Verification {
 // Portfolio dílo s polymorfním vlastníkem (uživatel NEBO organizace) a
 // publikačním cyklem draft → published → draft. Vlastnictví je vyjádřeno dvojicí
 // nullable sloupců `ownerUserId` / `ownerOrgId`; DB CHECK v migraci vynucuje, že
-// je vyplněný právě jeden. FK má zatím jen `ownerUserId` (User existuje); FK na
-// `organizations` doplní task T009 při zapojení organizací (viz TECHNICKE-ZADANI
-// §4.2 — vazba na cizí model = FK ze svého modelu, jakmile cílová tabulka žije).
+// je vyplněný právě jeden. Oba sloupce mají FK (User z T002, Organization z T009).
 //
 // Publikace pořizuje SNAPSHOT obsahu (`publishedSnapshot`): veřejná verze čte ze
 // snapshotu, takže úpravy draftu se venku neprojeví do další publikace
@@ -462,9 +598,10 @@ model PortfolioProject {
   /// Vlastník = uživatel (profesionál). FK na User. Právě jeden z owner sloupců.
   ownerUserId String?
   ownerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  /// Vlastník = organizace. Zatím bez FK (tabulka `organizations` vzniká v T009);
-  /// FK doplní T009. Integrita „právě jeden vlastník" je zajištěná CHECK v migraci.
+  /// Vlastník = organizace (T009). Integrita „právě jeden vlastník" je zajištěná
+  /// CHECK v migraci.
   ownerOrgId String?
+  ownerOrg   Organization? @relation(fields: [ownerOrgId], references: [id], onDelete: Cascade)
 
   // Metadata (T012 § Inputs)
   /// Titul díla. Povinný (validace v appce; DB drží NOT NULL až přes službu).
