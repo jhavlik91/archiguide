@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { trackEvent } from "@/lib/analytics";
 import { getPublicOrganization } from "@/features/organizations/queries";
+import { listPublicPortfolioForOrg } from "@/features/portfolio/queries";
 import { PublicOrganization } from "@/features/organizations/components/public/public-organization";
 
 /**
@@ -63,5 +64,8 @@ export default async function OrganizationPublicPage({
   // Analytika bez PII o návštěvníkovi.
   trackEvent("org.viewed", { orgId: org.id });
 
-  return <PublicOrganization org={org} />;
+  // Publikované projekty firmy pro sekci Portfolio (T016).
+  const projects = await listPublicPortfolioForOrg(org.id);
+
+  return <PublicOrganization org={org} projects={projects} />;
 }

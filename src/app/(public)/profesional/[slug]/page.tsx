@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { trackEvent } from "@/lib/analytics";
 import { getPublicProfile } from "@/features/profiles/queries";
 import { isIndexable } from "@/features/profiles/public-view";
+import { listPublicPortfolioForUser } from "@/features/portfolio/queries";
 import { PublicProfile } from "@/features/profiles/components/public/public-profile";
 
 /**
@@ -86,12 +87,16 @@ export default async function ProfessionalProfilePage({
     trackEvent("profile.viewed", { profileId: profile.id });
   }
 
+  // Publikované projekty profesionála pro sekci Portfolio (T016).
+  const projects = await listPublicPortfolioForUser(profile.userId);
+
   return (
     <PublicProfile
       profile={profile}
       mode={view.mode}
       isOwner={isOwner}
       isAuthenticated={isAuthenticated}
+      projects={projects}
     />
   );
 }

@@ -620,6 +620,11 @@ model PortfolioProject {
   visibility PortfolioVisibility @default(public)
   status     PortfolioStatus     @default(draft)
 
+  /// Stabilní veřejný slug pro `/projekt/[slug]` (T016). Vzniká z titulku při
+  /// první publikaci a dál se nemění, aby veřejný odkaz zůstal stabilní. Draft
+  /// ho ještě nemá (`null`) — jeho náhled běží přes id (`?preview=1`).
+  slug String? @unique
+
   /// Zmražený obsah publikované verze (metadata + bloky z T013). Veřejná verze
   /// čte odsud, takže úpravy draftu ji nemění do další publikace. `null` = nikdy
   /// nepublikováno. Struktura viz features/portfolio/public-view.ts.
