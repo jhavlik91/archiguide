@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ORG_ROLE_LABELS } from "../../types";
 import type { PublicOrganizationView } from "../../queries";
+import type { PublicPortfolioCard } from "@/features/portfolio/queries";
+import { PortfolioProjectGrid } from "@/features/portfolio/components/public/portfolio-project-grid";
 import { ExpandableText } from "./expandable-text";
 
 /** Iniciály pro logo-fallback (edge case: firma bez loga). */
@@ -47,8 +49,11 @@ function Chips({ items }: { items: string[] }) {
 
 export function PublicOrganization({
   org,
+  projects = [],
 }: {
   org: PublicOrganizationView;
+  /** Publikované projekty firmy (T016 § Main flow #4). */
+  projects?: PublicPortfolioCard[];
 }) {
   const hasContact =
     !!org.contact.email || !!org.contact.phone || !!org.contact.website;
@@ -144,10 +149,16 @@ export function PublicOrganization({
             </Section>
           )}
 
+          {/* Portfolio (T016) — publikované projekty firmy. */}
+          {projects.length > 0 && (
+            <Section title="Portfolio">
+              <PortfolioProjectGrid projects={projects} />
+            </Section>
+          )}
+
           {/*
-            Sloty pro budoucí sekce — vykreslí je až příslušné tasky: firemní
-            portfolio/projekty (T016), služby a pracovní nabídky. Dokud nemají
-            data, sekce se nezobrazují (T010 § Main flow).
+            Sloty pro budoucí sekce — vykreslí je až příslušné tasky: služby a
+            pracovní nabídky. Dokud nemají data, sekce se nezobrazují (T010 § Main flow).
           */}
         </div>
 
