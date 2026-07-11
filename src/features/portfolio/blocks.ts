@@ -77,7 +77,12 @@ const ctaBlockSchema = z.object({
   type: z.literal("cta"),
   content: z.object({
     label: z.string().min(1),
-    url: z.string().url(),
+    /** Jen http(s) — URL jde do `<Link href>` na veřejné stránce, `javascript:`
+     * a jiná schémata nesmí projít. */
+    url: z
+      .string()
+      .url()
+      .refine((url) => /^https?:\/\//i.test(url)),
     description: z.string().optional(),
   }),
 });

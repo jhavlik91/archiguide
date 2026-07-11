@@ -29,6 +29,18 @@ describe("parsePortfolioBlocks", () => {
     expect(blocks[0].type).toBe("text");
   });
 
+  it("zahodí CTA s jiným než http(s) schématem (URL jde do href)", () => {
+    const blocks = parsePortfolioBlocks([
+      { type: "cta", content: { label: "Klik", url: "javascript:alert(1)" } },
+      { type: "cta", content: { label: "Web", url: "https://example.com" } },
+    ]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "cta",
+      content: { url: "https://example.com" },
+    });
+  });
+
   it("nespadne na jiném než poli", () => {
     expect(parsePortfolioBlocks(null)).toEqual([]);
     expect(parsePortfolioBlocks(undefined)).toEqual([]);
