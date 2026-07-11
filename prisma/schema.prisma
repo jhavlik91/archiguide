@@ -373,6 +373,10 @@ model Organization {
   id String @id @default(cuid())
 
   name            String
+  /// Stabilní veřejný slug pro `/firma/[slug]` (T010). Vzniká z názvu při
+  /// založení, dál se nemění, aby veřejný odkaz zůstal stabilní. Nullable kvůli
+  /// firmám z T009 založeným před migrací; nová firma ho vždy dostane.
+  slug            String?  @unique
   /// Odkaz na logo. Vlastní upload řeší T014; zde jen URL.
   logoUrl         String?
   description     String?
@@ -384,6 +388,16 @@ model Organization {
   serviceAreas    String[]
   /// Specializace firmy (volný číselník).
   specializations String[]
+
+  // Veřejný kontakt (T010). Zobrazí se na veřejné stránce, jen když je vyplněný —
+  // „firemní kontakt jen pokud jej owner explicitně zveřejní" (T010 § Permissions).
+  // Kontakty jednotlivých členů se veřejně nikdy nezobrazují.
+  /// Veřejný kontaktní e-mail firmy (opt-in — prázdné = nezveřejněno).
+  publicEmail   String?
+  /// Veřejný kontaktní telefon firmy (opt-in).
+  publicPhone   String?
+  /// Veřejný web firmy (opt-in).
+  publicWebsite String?
 
   status OrgStatus @default(active)
 
@@ -407,6 +421,11 @@ model OrganizationMember {
   userId String
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   role   OrgRole @default(member)
+
+  /// Opt-in člena k zobrazení ve veřejném týmu firmy (T010). Default `false` —
+  /// členství je veřejně skryté, dokud ho člen sám nezveřejní. Skrytí členství
+  /// = přepnout zpět na `false` (T010 alternative flow).
+  publicVisible Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -45,7 +45,8 @@ test("firma: založení → pozvání → přijetí → změna role → odebrán
   ).toBeVisible();
 
   // --- Owner: pozvání člena jako editor ---
-  await owner.getByLabel("E-mail").fill(memberEmail);
+  // `exact`, ať locator nechytí i „Kontaktní e-mail" z firemního profilu (T010).
+  await owner.getByLabel("E-mail", { exact: true }).fill(memberEmail);
   await owner.getByRole("button", { name: "Pozvat" }).click();
   await expect(owner.getByText("Pozvánka odeslána.")).toBeVisible();
 

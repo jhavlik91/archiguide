@@ -23,6 +23,7 @@ import {
   getMembershipRole,
   inviteMember,
   removeMember,
+  setMemberPublicVisibility,
   updateOrganizationProfile,
 } from "./service";
 import { createInvitationToken, hashInvitationToken } from "./tokens";
@@ -32,6 +33,7 @@ import {
   createOrganizationSchema,
   inviteMemberSchema,
   memberTargetSchema,
+  memberVisibilitySchema,
   updateOrganizationSchema,
 } from "./validation";
 
@@ -142,6 +144,29 @@ export async function updateOrganizationAction(
   );
   revalidatePath(`/organizations/${orgId}`);
   return { ok: true, duplicateBusinessId };
+}
+
+// --- Veřejná viditelnost člena (opt-in do týmu) -----------------------------
+
+/**
+ * Přepne, zda je přihlášený uživatel viditelný ve veřejném týmu firmy (T010).
+ * O svém zveřejnění rozhoduje jen sám člen — proto se nastavuje pro vlastní
+ * `userId` a stačí být členem firmy (roli neřešíme).
+ */
+export async function setMemberVisibilityAction(
+  orgId: string,
+  input: unknown,
+): Promise<OrgActionResult> {
+  const { actor, role } = await requireMembership(orgId);
+  if (actor.kind !== "user") return UNAUTHENTICATED;
+  if (role === null) return FORBIDDEN; // není členem firmy
+
+  const parsed = memberVisibilitySchema.safeParse(input);
+  if (!parsed.success) return invalid();
+
+  await setMemberPublicVisibility(orgId, actor.userId, parsed.data.visible);
+  revalidatePath(`/organizations/${orgId}`);
+  return { ok: true };
 }
 
 // --- Pozvání člena ----------------------------------------------------------

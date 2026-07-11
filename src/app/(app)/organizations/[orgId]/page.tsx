@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 import { requireUser } from "@/lib/session";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   canEditOrg,
   canManageMembers,
@@ -53,6 +54,7 @@ export default async function OrganizationDetailPage({
     userId: m.userId,
     email: m.user.email,
     role: m.role,
+    publicVisible: m.publicVisible,
   }));
 
   const invitations: InvitationRow[] = org.invitations.map((inv) => ({
@@ -77,6 +79,13 @@ export default async function OrganizationDetailPage({
           {org.status === "archived" && (
             <Badge variant="outline">Archivováno</Badge>
           )}
+          {org.status === "active" && org.slug && (
+            <Button variant="ghost" size="sm" asChild className="ml-auto">
+              <Link href={`/firma/${org.slug}`}>
+                <ExternalLink className="size-4" /> Veřejná stránka
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -93,6 +102,9 @@ export default async function OrganizationDetailPage({
             location: org.location,
             serviceAreas: org.serviceAreas,
             specializations: org.specializations,
+            publicEmail: org.publicEmail,
+            publicPhone: org.publicPhone,
+            publicWebsite: org.publicWebsite,
           }}
         />
       </section>

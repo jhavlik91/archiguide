@@ -18,6 +18,9 @@ export type OrgProfileData = {
   location: string | null;
   serviceAreas: string[];
   specializations: string[];
+  publicEmail: string | null;
+  publicPhone: string | null;
+  publicWebsite: string | null;
 };
 
 /** Rozdělí čárkami oddělený vstup na deduplikovaný seznam bez prázdných. */
@@ -54,6 +57,9 @@ export function OrganizationProfileEditor({
     location: profile.location ?? "",
     serviceAreas: profile.serviceAreas.join(", "),
     specializations: profile.specializations.join(", "),
+    publicEmail: profile.publicEmail ?? "",
+    publicPhone: profile.publicPhone ?? "",
+    publicWebsite: profile.publicWebsite ?? "",
   });
   const [pending, startTransition] = useTransition();
 
@@ -71,6 +77,9 @@ export function OrganizationProfileEditor({
         location: form.location,
         serviceAreas: toList(form.serviceAreas),
         specializations: toList(form.specializations),
+        publicEmail: form.publicEmail,
+        publicPhone: form.publicPhone,
+        publicWebsite: form.publicWebsite,
       });
       if (!result.ok) {
         toast.error(result.message);
@@ -169,6 +178,52 @@ export function OrganizationProfileEditor({
           />
           <p className="text-muted-foreground text-xs">Oddělte čárkami.</p>
         </div>
+
+        <div className="space-y-4 border-t pt-4">
+          <div>
+            <p className="text-sm font-medium">Veřejný kontakt</p>
+            <p className="text-muted-foreground text-xs">
+              Zobrazí se na veřejné stránce firmy. Nepovinné — co nevyplníte, se
+              nezveřejní.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="publicEmail">Kontaktní e-mail</Label>
+              <Input
+                id="publicEmail"
+                type="email"
+                value={form.publicEmail}
+                disabled={disabled}
+                placeholder="info@firma.cz"
+                onChange={(e) => set("publicEmail", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="publicPhone">Kontaktní telefon</Label>
+              <Input
+                id="publicPhone"
+                type="tel"
+                value={form.publicPhone}
+                disabled={disabled}
+                placeholder="+420 …"
+                onChange={(e) => set("publicPhone", e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="publicWebsite">Web</Label>
+            <Input
+              id="publicWebsite"
+              type="url"
+              value={form.publicWebsite}
+              disabled={disabled}
+              placeholder="https://…"
+              onChange={(e) => set("publicWebsite", e.target.value)}
+            />
+          </div>
+        </div>
+
         {canEdit && (
           <Button onClick={save} disabled={disabled}>
             {pending ? "Ukládám…" : "Uložit profil"}
