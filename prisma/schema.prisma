@@ -53,6 +53,7 @@ model User {
   verifications       Verification[] // T011
   portfolioProjects   PortfolioProject[] // T012 (owner = uživatel)
   portfolioCoauthors  PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
+  mediaAssets         MediaAsset[] // T014 (owner = uživatel)
 
   @@map("users")
 }
@@ -406,6 +407,7 @@ model Organization {
   members           OrganizationMember[]
   invitations       OrganizationInvitation[]
   portfolioProjects PortfolioProject[] // T012 (owner = organizace)
+  mediaAssets       MediaAsset[] // T014 (owner = organizace)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -660,4 +662,77 @@ model PortfolioCoauthor {
   @@unique([projectId, userId])
   @@index([userId])
   @@map("portfolio_coauthors")
+}
+
+// ---------------------------------------------------------------------------
+// Média — upload + knihovna (T014)
+//
+// Sdílená služba pro portfolio (T012/T013), profily (T007) a přílohy (T023).
+// Vlastník je polymorfní (uživatel NEBO organizace) — stejný vzor jako portfolio:
+// dvojice nullable sloupců `ownerUserId` / `ownerOrgId` + DB CHECK „právě jeden".
+// Oba mají FK (User z T002, Organization z T009 — obě tabulky už existují).
+//
+// KLÍČOVÝ INVARIANT: originál se nikdy nepřepisuje (zadani/16 §7). `originalKey`
+// je uložený nahraný soubor v původní podobě; deriváty (`thumbnailKey`,
+// `webKey`) jsou vždy NOVÉ soubory a nesmí obsahovat GPS EXIF (privacy). Úpravy
+// (T015) taktéž vytvoří nový derivát, originál zůstane obnovitelný. Fyzická data
+// drží storage adaptér (filesystem v dev, S3 v prod) — v DB jen klíče.
+//
+// Mazání je měkké (`status = deleted`), aby originál zůstal obnovitelný; asset
+// použitý v PUBLIKOVANÉM obsahu smazat nelze (blok s odkazy — usage seam ve
+// features/media/usage.ts). Viditelnost: asset vidí a používá jen vlastník;
+// veřejně se servírují jen deriváty assetů použitých v publikovaném obsahu.
+// ---------------------------------------------------------------------------
+
+/// Stav média. `active` (dostupné) → `deleted` (měkce smazané; originál a klíče
+/// zůstávají kvůli obnovitelnosti a doběhu odkazů). Terminální je `deleted`.
+enum MediaStatus {
+  active
+  deleted
+}
+
+/// Nahraný obrázek s originálem a deriváty. Vlastník je uživatel (`ownerUserId`)
+/// nebo organizace (`ownerOrgId`) — právě jeden (CHECK v migraci). Originál se
+/// nikdy nepřepisuje; deriváty jsou samostatné soubory bez GPS EXIF.
+model MediaAsset {
+  id String @id @default(cuid())
+
+  /// Vlastník = uživatel. FK na User. Právě jeden z owner sloupců.
+  ownerUserId String?
+  ownerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  /// Vlastník = organizace (T009). Integrita „právě jeden vlastník" je CHECK v migraci.
+  ownerOrgId String?
+  ownerOrg   Organization? @relation(fields: [ownerOrgId], references: [id], onDelete: Cascade)
+
+  /// MIME typ originálu (z whitelistu: image/jpeg | image/png | image/webp).
+  mimeType String
+  /// Storage klíč nepřepisovaného originálu.
+  originalKey String
+  /// Storage klíč náhledu (thumbnail). `null`, dokud se derivát nevygeneruje.
+  thumbnailKey String?
+  /// Storage klíč web-optimalizované varianty.
+  webKey String?
+
+  /// Rozměry originálu v px (z metadat).
+  width  Int
+  height Int
+  /// Velikost originálu v bajtech.
+  byteSize Int
+
+  /// SHA-256 hash bajtů originálu — dedup v rámci vlastníka (volitelné; kolize
+  /// jen varuje, neblokuje). Umožní „už nahráno" bez druhé kopie.
+  contentHash String
+
+  /// Alternativní text (přístupnost). Volitelný, doplnitelný v knihovně.
+  altText String?
+
+  status MediaStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUserId])
+  @@index([ownerOrgId])
+  @@index([contentHash])
+  @@map("media_assets")
 }

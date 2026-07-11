@@ -31,6 +31,22 @@ V dev/testu se odchozí e-maily neposílají, ale ukládají do in-memory outbox
 poslední e-mail pro adresu lze přečíst přes `GET /api/dev/outbox?to=<email>`
 (v produkci 404). `AUTH_SECRET` je povinný — viz `.env.example`.
 
+## Média a knihovna (T014)
+
+Sdílená služba pro obrázky (portfolio, profily, přílohy). Model `MediaAsset` má
+polymorfního vlastníka (uživatel/organizace); **originál se nikdy nepřepisuje**,
+deriváty (thumbnail, web) generuje `sharp` jako nové soubory a **bez GPS EXIF**
+(privacy). Upload jde přímým multipartem přes `POST /api/media/upload` (whitelist
+JPEG/PNG/WebP dle obsahu, max 25 MB, ≤ 20 souborů/dávka); servírování přes
+chráněnou routu `GET /api/media/[id]/[variant]` — originál jen vlastník, derivát
+i veřejnost, ale jen u assetu použitého v publikovaném obsahu. Knihovna je na
+`/media`. Mazání je měkké (originál zůstává obnovitelný); asset použitý
+v publikovaném obsahu smazat nelze (blok s odkazy).
+
+Fyzická data drží storage adaptér za jedním interfacem: `filesystem` (dev,
+výchozí, do `MEDIA_STORAGE_DIR` mimo `public/`) nebo `s3` (prod). Volba přes
+`MEDIA_STORAGE_DRIVER` — viz `.env.example`.
+
 ## Požadavky
 
 - Node.js ≥ 20
