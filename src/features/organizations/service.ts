@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { normalizeEmail } from "@/lib/email";
@@ -11,6 +12,7 @@ import {
   normalizeBusinessId,
   ownerCount as countOwners,
 } from "./rules";
+import { slugify, withSuffix } from "./slug";
 import type { OrgRole } from "./types";
 import type {
   CreateOrganizationInput,
@@ -38,6 +40,49 @@ const detailInclude = {
 export type OrganizationDetail = Prisma.OrganizationGetPayload<{
   include: typeof detailInclude;
 }>;
+
+/**
+ * Tvar pro veřejnou stránku firmy (T010): firma + jen členové s opt-inem
+ * (`publicVisible`), a u nich jen minimum k odkazu na jejich veřejný profil
+ * (T008). Kontaktní údaje členů (e-mail) se sem záměrně nenačítají — veřejně se
+ * nikdy nezobrazují (T010 § Permissions), takže je route ani nemůže vykreslit.
+ */
+const publicOrgInclude = {
+  members: {
+    where: { publicVisible: true },
+    select: {
+      role: true,
+      createdAt: true,
+      user: {
+        select: {
+          professionalProfile: {
+            select: {
+              slug: true,
+              headline: true,
+              photoUrl: true,
+              status: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+  },
+} satisfies Prisma.OrganizationInclude;
+
+export type PublicOrganization = Prisma.OrganizationGetPayload<{
+  include: typeof publicOrgInclude;
+}>;
+
+/** Firma podle veřejného slugu (bez ohledu na stav — viditelnost řeší route). */
+export function getPublicOrganizationBySlug(
+  slug: string,
+): Promise<PublicOrganization | null> {
+  return db.organization.findUnique({
+    where: { slug },
+    include: publicOrgInclude,
+  });
+}
 
 /** Položka výpisu firem uživatele: firma, role uživatele a počet členů. */
 export type OrganizationListItem = {
@@ -119,10 +164,14 @@ export async function createOrganization(
 ): Promise<CreateResult> {
   const businessId = input.businessId ?? null;
   const duplicateBusinessId = await hasDuplicateBusinessId(businessId, null);
+  // Firma je po založení rovnou `active`, tedy veřejná — slug musí existovat hned
+  // (T010). Vzniká z názvu a dál se nemění.
+  const slug = await reserveUniqueSlug(input.name);
 
   const org = await db.organization.create({
     data: {
       name: input.name,
+      slug,
       businessId,
       members: { create: { userId, role: "owner" } },
     },
@@ -130,6 +179,56 @@ export async function createOrganization(
   });
 
   return { org, duplicateBusinessId };
+}
+
+/**
+ * Doplní firmě veřejný slug, pokud ho ještě nemá (firmy založené v T009 před
+ * migrací). Slug je stabilní — jednou vygenerovaný se nemění. Souběh řeší DB
+ * unikát: prohrávající zápis (P2002) se tiše ignoruje (příště se doplní jinak).
+ */
+async function ensureOrgSlug(orgId: string): Promise<void> {
+  const org = await db.organization.findUnique({
+    where: { id: orgId },
+    select: { slug: true, name: true },
+  });
+  if (!org || org.slug) return;
+
+  const slug = await reserveUniqueSlug(org.name);
+  try {
+    // updateMany s podmínkou `slug: null` je atomické — neošlape existující slug,
+    // když ho mezitím obsadil souběžný zápis (vrátí count 0, nic se nestane).
+    await db.organization.updateMany({
+      where: { id: orgId, slug: null },
+      data: { slug },
+    });
+  } catch (error) {
+    if (!(
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    )) {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Najde volný slug: nejdřív zkusí čistý root z názvu, při kolizi přidává krátký
+ * náhodný sufix. Uniqueness se přesto vynucuje DB indexem — souběžné založení
+ * dvou stejných názvů skončí P2002 a lze ho bezpečně zopakovat.
+ */
+async function reserveUniqueSlug(source: string): Promise<string> {
+  const root = slugify(source);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const suffix = attempt === 0 ? "" : randomBytes(3).toString("hex");
+    const candidate = withSuffix(root, suffix);
+    const taken = await db.organization.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
+    if (!taken) return candidate;
+  }
+  // Krajně nepravděpodobné (8 kolizí) — sáhni po delším náhodném sufixu.
+  return withSuffix(root, randomBytes(6).toString("hex"));
 }
 
 /** Existuje jiná (než `exceptOrgId`) firma se stejným normalizovaným IČO? */
@@ -169,9 +268,29 @@ export async function updateOrganizationProfile(
       location: input.location ?? null,
       serviceAreas: input.serviceAreas,
       specializations: input.specializations,
+      publicEmail: input.publicEmail ?? null,
+      publicPhone: input.publicPhone ?? null,
+      publicWebsite: input.publicWebsite ?? null,
     },
   });
+  // Pojistka pro firmy z T009 bez slugu — po první editaci budou veřejně dosažitelné.
+  await ensureOrgSlug(orgId);
   return { duplicateBusinessId };
+}
+
+/**
+ * Nastaví, zda je členství uživatele viditelné ve veřejném týmu firmy (T010).
+ * Opt-in řídí sám člen; oprávnění (je členem) ověřuje akční vrstva.
+ */
+export async function setMemberPublicVisibility(
+  orgId: string,
+  userId: string,
+  visible: boolean,
+): Promise<void> {
+  await db.organizationMember.update({
+    where: { orgId_userId: { orgId, userId } },
+    data: { publicVisible: visible },
+  });
 }
 
 /** Nastaví stav firmy (active/archived). */

@@ -19,6 +19,8 @@ export type AnalyticsEvent =
   | "org.created"
   | "org.member_invited"
   | "org.member_joined"
+  // Organizace — veřejná stránka (T010)
+  | "org.viewed"
   // Verifikace (T011)
   | "verification.email_completed"
   | "verification.phone_completed";

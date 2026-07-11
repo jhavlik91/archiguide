@@ -36,10 +36,10 @@ Firma bez členů se souhlasem (sekce tým se skryje); bez loga; dlouhý popis.
 Event: `org.viewed`.
 
 ## Acceptance criteria
-- [ ] Veřejná stránka dostupná nepřihlášenému.
-- [ ] Člen bez opt-in se v týmu nezobrazuje (e2e).
-- [ ] Archivovaná firma vrací 404.
-- [ ] Mobil plně použitelný.
+- [x] Veřejná stránka dostupná nepřihlášenému.
+- [x] Člen bez opt-in se v týmu nezobrazuje (e2e).
+- [x] Archivovaná firma vrací 404.
+- [x] Mobil plně použitelný.
 
 ## Out of scope
 Firemní portfolio, služby, joby, claim flow.

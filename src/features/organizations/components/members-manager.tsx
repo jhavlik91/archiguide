@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { UserMinus, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -35,10 +36,17 @@ import {
   inviteMemberAction,
   leaveOrganizationAction,
   removeMemberAction,
+  setMemberVisibilityAction,
 } from "../actions";
 import type { OrgActionResult } from "../actions";
 
-export type MemberRow = { userId: string; email: string; role: OrgRole };
+export type MemberRow = {
+  userId: string;
+  email: string;
+  role: OrgRole;
+  /** Opt-in člena do veřejného týmu (T010). */
+  publicVisible: boolean;
+};
 export type InvitationRow = {
   id: string;
   email: string;
@@ -175,6 +183,26 @@ export function MembersManager({
                   <p className="truncate text-sm font-medium">{m.email}</p>
                   {isSelf && (
                     <p className="text-muted-foreground text-xs">To jste vy</p>
+                  )}
+                  {isSelf && (
+                    <label className="mt-2 flex items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={m.publicVisible}
+                        disabled={pending}
+                        onCheckedChange={(v) =>
+                          run(
+                            () =>
+                              setMemberVisibilityAction(orgId, {
+                                visible: v === true,
+                              }),
+                            v === true
+                              ? "Jste vidět ve veřejném týmu."
+                              : "Skryto z veřejného týmu.",
+                          )
+                        }
+                      />
+                      <span>Zobrazovat mě ve veřejném týmu firmy</span>
+                    </label>
                   )}
                 </div>
                 <div className="flex items-center gap-2">

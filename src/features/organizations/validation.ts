@@ -56,8 +56,29 @@ export const updateOrganizationSchema = z.object({
   location: optionalText(120),
   serviceAreas: textList(),
   specializations: textList(),
+  // Veřejný kontakt (T010) — opt-in, prázdné = nezveřejněno.
+  publicEmail: z
+    .string()
+    .trim()
+    .email("Zadejte platný e-mail.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  publicPhone: optionalText(40),
+  publicWebsite: z
+    .string()
+    .trim()
+    .url("Zadejte platnou URL webu.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
 });
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
+
+// --- Opt-in člena do veřejného týmu -----------------------------------------
+
+export const memberVisibilitySchema = z.object({
+  visible: z.boolean(),
+});
+export type MemberVisibilityInput = z.infer<typeof memberVisibilitySchema>;
 
 // --- Pozvání člena ----------------------------------------------------------
 
