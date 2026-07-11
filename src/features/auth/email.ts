@@ -68,6 +68,20 @@ export function sendPasswordResetEmail(
   });
 }
 
+/** Pozvánka do firmy (T009). Odkaz vede na stránku přijetí/odmítnutí. */
+export function sendOrgInvitationEmail(
+  to: string,
+  inviteUrl: string,
+  orgName: string,
+): Promise<void> {
+  return deliver({
+    to,
+    subject: `Pozvánka do firmy ${orgName} — ArchiGuide`,
+    body: `Byli jste pozváni do firmy ${orgName}. Přijměte pozvánku odkazem. Platnost 14 dní.`,
+    link: inviteUrl,
+  });
+}
+
 /** Dev/test-only: poslední e-mail doručený na danou adresu. */
 export function peekLastEmail(to: string): OutboxEmail | undefined {
   if (isProduction) return undefined;

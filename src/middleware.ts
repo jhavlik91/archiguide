@@ -17,6 +17,7 @@ const PROTECTED_PREFIXES = [
   "/messages",
   "/portfolio",
   "/profile",
+  "/organizations",
   "/settings",
   "/guide",
   "/admin",
