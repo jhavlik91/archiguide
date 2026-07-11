@@ -27,6 +27,8 @@ export type AnalyticsEvent =
   // Portfolio (T012)
   | "portfolio.created"
   | "portfolio.published"
+  // Média (T014)
+  | "media.uploaded"
   // Portfolio — veřejná stránka (T016)
   | "portfolio.viewed";
 

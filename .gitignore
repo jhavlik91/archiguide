@@ -28,6 +28,9 @@
 # production
 /build
 
+# media storage (T014, dev filesystem driver)
+/.storage
+
 # misc
 .DS_Store
 *.pem
