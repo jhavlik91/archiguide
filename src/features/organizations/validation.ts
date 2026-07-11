@@ -68,6 +68,9 @@ export const updateOrganizationSchema = z.object({
     .string()
     .trim()
     .url("Zadejte platnou URL webu.")
+    // Renderuje se jako odkaz na veřejné stránce — jen http(s), ať nejde uložit
+    // např. `javascript:` URL.
+    .refine((url) => /^https?:\/\//i.test(url), "Web musí začínat http(s)://.")
     .optional()
     .or(z.literal("").transform(() => undefined)),
 });

@@ -40,6 +40,19 @@ describe("updateOrganizationSchema", () => {
     });
     expect(r.success).toBe(false);
   });
+  it("veřejný web bere jen http(s) — jiná schémata (javascript:) odmítne", () => {
+    expect(
+      updateOrganizationSchema.safeParse({
+        name: "X",
+        publicWebsite: "javascript:alert(1)",
+      }).success,
+    ).toBe(false);
+    const parsed = updateOrganizationSchema.parse({
+      name: "X",
+      publicWebsite: "https://firma.cz",
+    });
+    expect(parsed.publicWebsite).toBe("https://firma.cz");
+  });
   it("deduplikuje regiony a specializace", () => {
     const parsed = updateOrganizationSchema.parse({
       name: "X",
