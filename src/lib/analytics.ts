@@ -17,7 +17,10 @@ export type AnalyticsEvent =
   | "profile.viewed"
   // Verifikace (T011)
   | "verification.email_completed"
-  | "verification.phone_completed";
+  | "verification.phone_completed"
+  // Portfolio (T012)
+  | "portfolio.created"
+  | "portfolio.published";
 
 export function trackEvent(
   event: AnalyticsEvent,

@@ -50,6 +50,8 @@ model User {
   roles               UserRole[]           // T004
   professionalProfile ProfessionalProfile? // T007
   verifications       Verification[]       // T011
+  portfolioProjects   PortfolioProject[]   // T012 (owner = uživatel)
+  portfolioCoauthors  PortfolioCoauthor[]  // T012 (uvedení jako spoluautor)
 
   @@map("users")
 }
@@ -396,4 +398,129 @@ model Verification {
   @@unique([userId, type])
   @@index([userId])
   @@map("verifications")
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio projekt (T012)
+//
+// Portfolio dílo s polymorfním vlastníkem (uživatel NEBO organizace) a
+// publikačním cyklem draft → published → draft. Vlastnictví je vyjádřeno dvojicí
+// nullable sloupců `ownerUserId` / `ownerOrgId`; DB CHECK v migraci vynucuje, že
+// je vyplněný právě jeden. FK má zatím jen `ownerUserId` (User existuje); FK na
+// `organizations` doplní task T009 při zapojení organizací (viz TECHNICKE-ZADANI
+// §4.2 — vazba na cizí model = FK ze svého modelu, jakmile cílová tabulka žije).
+//
+// Publikace pořizuje SNAPSHOT obsahu (`publishedSnapshot`): veřejná verze čte ze
+// snapshotu, takže úpravy draftu se venku neprojeví do další publikace
+// (legacy-master-spec §24–25). Uvedení spoluautorů je NAOPAK živé — čte se z
+// potvrzených řádků `PortfolioCoauthor`, aby odvolání souhlasu jméno okamžitě
+// skrylo (zadani/16-ai-team-execution-rules.md §7). Mazání je měkké (`deletedAt`).
+// Blokový editor (T013), média (T014) a veřejný render (T016) jsou mimo T012.
+// ---------------------------------------------------------------------------
+
+/// Stav portfolio projektu. `draft` (jen editoři a pozvaní spoluautoři) →
+/// `published` (veřejná verze ze snapshotu) → `archived` (staženo, neveřejné).
+enum PortfolioStatus {
+  draft
+  published
+  archived
+}
+
+/// Viditelnost publikované verze. `public` je dohledatelná a listovaná;
+/// `unlisted` je dostupná jen přes přímý odkaz (nelistuje se).
+enum PortfolioVisibility {
+  public
+  unlisted
+}
+
+/// Typ portfolio díla (legacy-master-spec §24). Volitelný — doplní se v editaci.
+enum PortfolioProjectType {
+  project // realizovaný projekt
+  realization // realizace
+  concept // koncept / studie
+  technical_case_study // technická případová studie
+  craft_realization // řemeslná realizace
+  before_after // před / po
+  competition // soutěžní návrh
+  research // výzkumný projekt
+}
+
+/// Stav uvedení spoluautora. `invited` → `confirmed` (zobrazí se) / `declined`.
+/// Bez `confirmed` se jméno na veřejné verzi nikdy neukáže.
+enum PortfolioCoauthorStatus {
+  invited
+  confirmed
+  declined
+}
+
+/// Portfolio dílo. Vlastníkem je uživatel (`ownerUserId`) nebo organizace
+/// (`ownerOrgId`) — právě jeden (CHECK v migraci). Metadata jsou volná a vznikají
+/// postupně; povinný je jen titul (validace v appce a při publikaci).
+model PortfolioProject {
+  id String @id @default(cuid())
+
+  /// Vlastník = uživatel (profesionál). FK na User. Právě jeden z owner sloupců.
+  ownerUserId String?
+  ownerUser   User?   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  /// Vlastník = organizace. Zatím bez FK (tabulka `organizations` vzniká v T009);
+  /// FK doplní T009. Integrita „právě jeden vlastník" je zajištěná CHECK v migraci.
+  ownerOrgId String?
+
+  // Metadata (T012 § Inputs)
+  /// Titul díla. Povinný (validace v appce; DB drží NOT NULL až přes službu).
+  title String
+  /// Typ díla (viz enum). Volitelný.
+  projectType PortfolioProjectType?
+  /// Lokalita — jen město/region (bez přesné adresy, legacy-master-spec §24).
+  location String?
+  /// Rok realizace/dokončení. Volitelný; rozsah hlídá validace.
+  year Int?
+  /// Krátký popis díla (perex). Delší obsah řeší blokový editor (T013).
+  description String?
+
+  visibility PortfolioVisibility @default(public)
+  status     PortfolioStatus     @default(draft)
+
+  /// Zmražený obsah publikované verze (metadata + bloky z T013). Veřejná verze
+  /// čte odsud, takže úpravy draftu ji nemění do další publikace. `null` = nikdy
+  /// nepublikováno. Struktura viz features/portfolio/public-view.ts.
+  publishedSnapshot Json?
+  /// První publikace (nemění se dalšími publikacemi ani unpublishem) — stabilní
+  /// datum vzniku veřejné verze.
+  publishedAt DateTime?
+  /// Měkké smazání. Neprázdné = projekt je zrušený a nikde se nenabízí.
+  deletedAt DateTime?
+
+  coauthors PortfolioCoauthor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUserId])
+  @@index([ownerOrgId])
+  @@index([status])
+  @@map("portfolio_projects")
+}
+
+/// Spoluautor díla. Jméno se veřejně zobrazí až po `confirmed`; odvolání souhlasu
+/// (`declined`) ho hned skryje. Právě jeden řádek na (projekt, uživatel).
+model PortfolioCoauthor {
+  id        String           @id @default(cuid())
+  projectId String
+  project   PortfolioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status PortfolioCoauthorStatus @default(invited)
+
+  invitedAt   DateTime  @default(now())
+  /// Kdy spoluautor potvrdil/odmítl (poslední změna stavu). `null` = dosud čeká.
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("portfolio_coauthors")
 }
