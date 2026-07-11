@@ -15,6 +15,8 @@ import {
   PRICING_MODEL_LABELS,
 } from "../../types";
 import type { PublicProfile } from "../../service";
+import type { PublicPortfolioCard } from "@/features/portfolio/queries";
+import { PortfolioProjectGrid } from "@/features/portfolio/components/public/portfolio-project-grid";
 import { ContactCta } from "./contact-cta";
 import { ExpandableText } from "./expandable-text";
 
@@ -74,11 +76,14 @@ export function PublicProfile({
   mode,
   isOwner,
   isAuthenticated,
+  projects = [],
 }: {
   profile: PublicProfile;
   mode: "public" | "preview";
   isOwner: boolean;
   isAuthenticated: boolean;
+  /** Publikované projekty profesionála (T016 § Main flow #4). */
+  projects?: PublicPortfolioCard[];
 }) {
   const primary = profile.professions.find((p) => p.isPrimary);
   const secondary = profile.professions.filter((p) => !p.isPrimary);
@@ -260,9 +265,16 @@ export function PublicProfile({
             </Section>
           )}
 
+          {/* Portfolio (T016) — publikované projekty profesionála. */}
+          {projects.length > 0 && (
+            <Section title="Portfolio">
+              <PortfolioProjectGrid projects={projects} />
+            </Section>
+          )}
+
           {/*
             Sloty pro budoucí sekce — vykreslí je až příslušné tasky:
-            portfolio (T016), verifikační badge (T011), hodnocení (T037), služby.
+            verifikační badge (T011), hodnocení (T037), služby.
             Dokud nemají data, sekce se nezobrazují (T008 § Main flow).
           */}
         </div>

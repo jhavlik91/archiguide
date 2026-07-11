@@ -26,7 +26,9 @@ export type AnalyticsEvent =
   | "verification.phone_completed"
   // Portfolio (T012)
   | "portfolio.created"
-  | "portfolio.published";
+  | "portfolio.published"
+  // Portfolio — veřejná stránka (T016)
+  | "portfolio.viewed";
 
 export function trackEvent(
   event: AnalyticsEvent,
