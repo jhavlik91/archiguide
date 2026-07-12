@@ -47,6 +47,31 @@ Fyzická data drží storage adaptér za jedním interfacem: `filesystem` (dev,
 výchozí, do `MEDIA_STORAGE_DIR` mimo `public/`) nebo `s3` (prod). Volba přes
 `MEDIA_STORAGE_DRIVER` — viz `.env.example`.
 
+## Přílohy (T023)
+
+Generický systém příloh (dokumenty, PDF, obrázky) použitelný napříč doménami —
+brief, poptávka, reakce, zprávy. Konzumující domény mají jeden vstupní bod:
+`@/lib/attachments` (`attach`, `canAccess`, `registerContextResolver`) a **nepíšou
+vlastní přístupovou logiku**.
+
+- **Viditelnost** je explicitní: `private` (výchozí — nová příloha je vždy
+  soukromá), `shared_in_context` (účastníci daného kontextu) nebo `public`. Změna
+  viditelnosti je vědomá akce; u přílohy se **sensitivity flagem** zpřístupnění
+  vyžaduje explicitní potvrzení (varování před odhalením osobních údajů).
+- **Kontext je polymorfní** (`contextType` + `contextId`) — attachment nezná
+  konkrétní doménu. Doména si registruje resolver
+  (`registerContextResolver("brief", …)`), který řekne, zda kontext existuje a kdo
+  je jeho účastníkem. Neznámý kontext je fail-closed.
+- **Stažení jde vždy přes autorizovanou routu** `GET /api/attachments/[id]`
+  s kontrolou `canAccess` — soubory leží mimo `public/`, soukromá příloha není
+  dostupná žádnou nepodepsanou URL. Upload přes `POST /api/attachments/upload`
+  (whitelist dle **obsahu**: obrázky + PDF; max velikost `ATTACHMENT_MAX_BYTES`).
+- **Mazání je měkké**; konzumující kontext zobrazí placeholder „příloha byla
+  odstraněna" (komponenta `AttachmentItem`), ne rozbitý odkaz.
+
+Storage adaptér je stejný jako u médií: `ATTACHMENT_STORAGE_DRIVER`
+(`filesystem` výchozí | `s3`), `ATTACHMENT_STORAGE_DIR` — viz `.env.example`.
+
 ## Požadavky
 
 - Node.js ≥ 20

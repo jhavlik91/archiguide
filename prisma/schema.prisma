@@ -55,6 +55,7 @@ model User {
   portfolioCoauthors  PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
   mediaAssets         MediaAsset[] // T014 (owner = uživatel)
   guideSessions       GuideSession[] // T017 (guide session připojená k účtu)
+  attachments         Attachment[] // T023 (owner = uživatel)
 
   @@map("users")
 }
@@ -932,4 +933,88 @@ model GuideSession {
   @@index([userId])
   @@index([scenarioId])
   @@map("guide_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Attachment systém (T023)
+//
+// Generický systém příloh (dokumenty, PDF, obrázky) použitelný napříč doménami:
+// brief (T022), poptávka (T024), reakce (T027), zprávy (T031). Konkrétní doménu
+// task nezná — kontext je POLYMORFNÍ dvojicí `contextType` (např. `brief`,
+// `request`) + `contextId`. Doména si u `lib/attachments.ts` registruje resolver,
+// který řekne, kdo je účastníkem daného kontextu; příloha sama žádnou doménovou
+// logiku nedrží (konzumující tasky nepíší vlastní přístupovou logiku).
+//
+// KLÍČOVÝ INVARIANT: nová příloha je VŽDY `private` (zadani/16 §6 — least
+// privilege). Zpřístupnění (`shared_in_context`/`public`) je vědomá akce; u
+// přílohy se `sensitive` flagem vyžaduje navíc explicitní potvrzení
+// (zadani/12 §8). Přístup ke stažení jde vždy přes autorizovanou routu
+// (`GET /api/attachments/[id]`) — soukromý soubor není dosažitelný žádnou
+// nepodepsanou URL (leží mimo `public/`, řídí ho `canAccess`).
+//
+// Fyzická data drží storage adaptér (filesystem v dev, S3 v prod) — v DB jen
+// `storageKey`. Záznam vzniká AŽ po potvrzeném uploadu (žádné osiřelé řádky).
+// Mazání je měkké (`status = deleted`); konzumující kontext zobrazí placeholder
+// „příloha byla odstraněna", ne rozbitý odkaz. Antivirus/scanning a verzování
+// souborů jsou mimo scope.
+// ---------------------------------------------------------------------------
+
+/// Viditelnost přílohy. `private` (jen vlastník) je výchozí; `shared_in_context`
+/// (účastníci daného kontextu — vyhodnotí resolver domény); `public` (kdokoli).
+enum AttachmentVisibility {
+  private
+  shared_in_context
+  public
+}
+
+/// Stav přílohy. `active` → `deleted` (měkce; soubor ve storage zůstává, aby šel
+/// doběhnout odkaz na placeholder a případně obnovit). Terminální je `deleted`.
+enum AttachmentStatus {
+  active
+  deleted
+}
+
+/// Nahraná příloha s explicitní viditelností a sensitivity flagem. Vlastníkem je
+/// vždy uživatel (`ownerUserId`, FK na User z T002). Kontext je polymorfní
+/// (`contextType` + `contextId`) — na cizí doménové modely se neváže FK, vazbu
+/// vyhodnocuje resolver registrovaný doménou. Tentýž soubor přiložený do dvou
+/// kontextů = dva řádky (viditelnost se řídí nezávisle).
+model Attachment {
+  id String @id @default(cuid())
+
+  /// Vlastník přílohy (nahravatel). Vlastník má přístup vždy.
+  ownerUserId String
+  ownerUser   User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  /// Polymorfní kontext: typ domény (`brief`, `request`, `response`, `message`, …)
+  /// a ID entity v ní. Bez FK na cizí model (vazbu řeší resolver domény).
+  contextType String
+  contextId   String
+
+  /// Storage klíč nahraného souboru (fyzická data drží storage adaptér).
+  storageKey String
+  /// MIME typ z whitelistu (detekováno z obsahu, ne jen z přípony).
+  mimeType String
+  /// Původní, sanitizovaný název souboru (pro zobrazení a stažení).
+  fileName String
+  /// Velikost souboru v bajtech.
+  byteSize Int
+
+  /// Explicitní viditelnost. Nová příloha je vždy `private` (zadani/16 §6).
+  visibility AttachmentVisibility @default(private)
+  /// Sensitivity flag: obsahuje citlivá/osobní data → zveřejnění vyžaduje
+  /// explicitní potvrzení (zadani/12 §8).
+  sensitive Boolean @default(false)
+
+  /// Volná metadata (JSON) — konzumující doména si sem uloží, co potřebuje.
+  metadata Json?
+
+  status AttachmentStatus @default(active)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUserId])
+  @@index([contextType, contextId])
+  @@map("attachments")
 }

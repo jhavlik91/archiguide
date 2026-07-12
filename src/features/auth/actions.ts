@@ -8,6 +8,8 @@ import { trackEvent } from "@/lib/analytics";
 import { rateLimit } from "@/lib/rate-limit";
 import { signIn, signOut } from "@/auth";
 import { startEmailVerification } from "@/features/verification/service";
+import { attachSessionsToUser } from "@/features/guide/service";
+import { readSessionToken } from "@/features/guide/session-cookie";
 import { hashPassword, verifyPassword } from "./password";
 import { sendPasswordResetEmail } from "./email";
 import { createResetToken, hashResetToken, isResetTokenValid } from "./tokens";
@@ -57,6 +59,16 @@ async function guardRateLimit(
 
 function fieldError(message: string): AuthActionResult {
   return { ok: false, error: "validation", message };
+}
+
+/**
+ * Připojí případnou anonymní guide session (dle cookie tokenu) k právě
+ * přihlášenému účtu, aby se rozpracovaný záměr registrací/loginem neztratil
+ * (T017 §54, T018). Bez tokenu nebo bez anonymní session je to no-op.
+ */
+async function attachGuideSessions(userId: string): Promise<void> {
+  const token = await readSessionToken();
+  if (token) await attachSessionsToUser({ token, userId });
 }
 
 // --- registrace -------------------------------------------------------------
@@ -116,6 +128,7 @@ export async function register(
     password: parsed.data.password,
     redirect: false,
   });
+  await attachGuideSessions(user.id);
   return { ok: true, redirectTo: "/dashboard" };
 }
 
@@ -171,6 +184,7 @@ export async function login(
     password: parsed.data.password,
     redirect: false,
   });
+  await attachGuideSessions(user.id);
   return { ok: true, redirectTo: "/dashboard" };
 }
 
@@ -220,6 +234,7 @@ export async function reactivateAndLogin(
     password: parsed.data.password,
     redirect: false,
   });
+  await attachGuideSessions(user.id);
   return { ok: true, redirectTo: "/dashboard" };
 }
 
