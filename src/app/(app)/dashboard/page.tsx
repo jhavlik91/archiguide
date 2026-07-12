@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { GuideResumeBanner } from "@/features/guide/components/guide-resume-banner";
 
 export default function DashboardPage() {
   return (
@@ -15,6 +16,8 @@ export default function DashboardPage() {
           Placeholder přihlášené části — aplikační layout (T006).
         </p>
       </div>
+
+      <GuideResumeBanner />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {["Nové poptávky", "Nepřečtené zprávy", "Zobrazení profilu"].map(
           (title) => (

@@ -40,7 +40,10 @@ export type AnalyticsEvent =
   | "guide.started"
   | "guide.step_answered"
   | "guide.completed"
-  | "guide.abandoned";
+  | "guide.abandoned"
+  // Guide — UI runner (T018)
+  | "guide.scenario_selected"
+  | "guide.resumed";
 
 export function trackEvent(
   event: AnalyticsEvent,
