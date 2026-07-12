@@ -10,6 +10,7 @@
  */
 
 import { conditionReferencedSteps } from "./conditions";
+import { collectOutcomeProfessions, findUncoveredPaths } from "./outcomes";
 import {
   GUIDE_LEAF_OPS,
   GUIDE_STEP_TYPES,
@@ -251,7 +252,87 @@ export function validateScenarioDefinition(
     );
   });
 
+  errors.push(...validateOutcomes(def, keyPosition));
+
   return errors;
+}
+
+/**
+ * Zkontroluje výstupy scénáře (T019): jedinečné klíče, doporučenou profesi i
+ * další krok, dobře utvořenou podmínku `when` a hlavně — ŽÁDNOU SLEPOU ULIČKU:
+ * každá průchozí koncová větev musí sednout aspoň na jeden výstup
+ * (`findUncoveredPaths`). Existenci profesí v taxonomii řeší
+ * `validateScenarioProfessions` (potřebuje seznam slugů, který sem nepatří).
+ */
+function validateOutcomes(
+  def: GuideScenarioDefinition,
+  keyPosition: Map<string, number>,
+): string[] {
+  const errors: string[] = [];
+  const outcomes = def.outcomes ?? [];
+  const seen = new Set<string>();
+
+  outcomes.forEach((outcome) => {
+    if (!outcome.key) {
+      errors.push("Výstup bez klíče.");
+    } else if (seen.has(outcome.key)) {
+      errors.push(`Duplicitní klíč výstupu: ${outcome.key}.`);
+    }
+    if (outcome.key) seen.add(outcome.key);
+
+    if (
+      !Array.isArray(outcome.professions) ||
+      outcome.professions.length === 0
+    ) {
+      errors.push(`Výstup ${outcome.key}: chybí doporučené profese.`);
+    }
+    if (!outcome.nextStep || outcome.nextStep.trim().length === 0) {
+      errors.push(`Výstup ${outcome.key}: chybí doporučený další krok.`);
+    }
+    if (outcome.when) {
+      // Výstup smí odkazovat na kterýkoli krok — index za koncem = bez limitu.
+      errors.push(
+        ...validateCondition(
+          outcome.when,
+          `outcome:${outcome.key}`,
+          def.steps.length,
+          keyPosition,
+          def,
+        ),
+      );
+    }
+  });
+
+  // Slepé uličky kontrolujeme jen u strukturálně validních scénářů (jinak by
+  // enumerace běžela nad rozbitou definicí).
+  if (errors.length === 0 && outcomes.length > 0) {
+    const uncovered = findUncoveredPaths(def);
+    if (uncovered.length > 0) {
+      const sample = uncovered
+        .slice(0, 3)
+        .map((a) => JSON.stringify(a))
+        .join("; ");
+      errors.push(
+        `Slepá ulička: ${uncovered.length} koncová větev bez výstupu (např. ${sample}).`,
+      );
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Ověří, že všechny profese doporučené výstupy existují v taxonomii (T005).
+ * Odděleno od `validateScenarioDefinition`, protože potřebuje seznam platných
+ * slugů zvenčí (seed / test). Vrací seznam chybějících slugů (prázdný = OK).
+ */
+export function validateScenarioProfessions(
+  def: GuideScenarioDefinition,
+  knownProfessionSlugs: ReadonlySet<string>,
+): string[] {
+  return collectOutcomeProfessions(def).filter(
+    (slug) => !knownProfessionSlugs.has(slug),
+  );
 }
 
 function validateStepOptions(step: GuideStepDefinition): string[] {

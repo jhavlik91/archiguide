@@ -11,6 +11,7 @@ import type {
   GuideAnswer,
   GuideAnswers,
   GuideConflictRule,
+  GuideOutcome,
   GuideScenarioDefinition,
   GuideStepDefinition,
   GuideStepType,
@@ -37,6 +38,10 @@ function readAnswers(value: Prisma.JsonValue): GuideAnswers {
 
 function readConflicts(value: Prisma.JsonValue): GuideConflictRule[] {
   return (value ?? []) as unknown as GuideConflictRule[];
+}
+
+function readOutcomes(value: Prisma.JsonValue): GuideOutcome[] {
+  return (value ?? []) as unknown as GuideOutcome[];
 }
 
 /** Zapisovatelný tvar odpovědi pro Prisma Json sloupec. */
@@ -74,6 +79,7 @@ function toDefinition(scenario: ScenarioWithSteps): GuideScenarioDefinition {
     name: scenario.name,
     steps,
     conflicts: readConflicts(scenario.conflicts),
+    outcomes: readOutcomes(scenario.outcomes),
   };
 }
 
@@ -91,12 +97,14 @@ export async function syncScenario(
         name: def.name,
         active: true,
         conflicts: (def.conflicts ?? []) as unknown as Prisma.InputJsonValue,
+        outcomes: (def.outcomes ?? []) as unknown as Prisma.InputJsonValue,
       },
       create: {
         slug: def.slug,
         version: def.version,
         name: def.name,
         conflicts: (def.conflicts ?? []) as unknown as Prisma.InputJsonValue,
+        outcomes: (def.outcomes ?? []) as unknown as Prisma.InputJsonValue,
       },
     });
 

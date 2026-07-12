@@ -6,6 +6,7 @@
 export * from "./types";
 export * from "./conditions";
 export * from "./engine";
+export * from "./outcomes";
 export * from "./validation";
 export * from "./permissions";
 export * from "./scenarios";

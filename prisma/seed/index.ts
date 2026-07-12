@@ -4,7 +4,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { buildTaxonomy } from "../../src/features/taxonomy/data";
 import { hashPassword } from "../../src/features/auth/password";
 import { BUILTIN_SCENARIOS } from "../../src/features/guide/scenarios";
-import { validateScenarioDefinition } from "../../src/features/guide/validation";
+import {
+  validateScenarioDefinition,
+  validateScenarioProfessions,
+} from "../../src/features/guide/validation";
 
 // Seed infrastruktura. Doménové seedy se přidávají do `main`. Vše je idempotentní
 // (upsert dle slugu), aby `prisma db seed` šlo spustit opakovaně i v CI.
@@ -270,12 +273,26 @@ async function seedPortfolio() {
  * tady je inline, aby seed neimportoval `server-only` modul (vzor jako portfolio).
  */
 async function seedGuide() {
+  // Množina platných slugů profesí (T005) pro validaci doporučení ve výstupech.
+  const knownProfessionSlugs = new Set(
+    buildTaxonomy().flatMap((c) => c.professions.map((p) => p.slug)),
+  );
+
   let stepCount = 0;
   for (const def of BUILTIN_SCENARIOS) {
     const errors = validateScenarioDefinition(def);
     if (errors.length > 0) {
       throw new Error(
         `Neplatný guide scénář ${def.slug} v${def.version}:\n- ${errors.join("\n- ")}`,
+      );
+    }
+    const missingProfessions = validateScenarioProfessions(
+      def,
+      knownProfessionSlugs,
+    );
+    if (missingProfessions.length > 0) {
+      throw new Error(
+        `Guide scénář ${def.slug}: neznámé profese v doporučeních — ${missingProfessions.join(", ")}.`,
       );
     }
 
@@ -285,12 +302,14 @@ async function seedGuide() {
         name: def.name,
         active: true,
         conflicts: (def.conflicts ?? []) as unknown as Prisma.InputJsonValue,
+        outcomes: (def.outcomes ?? []) as unknown as Prisma.InputJsonValue,
       },
       create: {
         slug: def.slug,
         version: def.version,
         name: def.name,
         conflicts: (def.conflicts ?? []) as unknown as Prisma.InputJsonValue,
+        outcomes: (def.outcomes ?? []) as unknown as Prisma.InputJsonValue,
       },
     });
 

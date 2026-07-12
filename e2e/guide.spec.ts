@@ -1,23 +1,24 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * T018 — Guide UI runner. Ověřuje hlavní akceptační scénáře (T018 § Acceptance):
- * výběr scénáře → průchod otázkami s „nevím" → reload uprostřed → pokračování →
- * dokončení; krok zpět se změnou odpovědi přepočítá větev; celé flow na mobilu;
- * nepřihlášený dokončí guide bez registrace. Vše běží ANONYMNĚ (bez storageState).
+ * T018 — Guide UI runner nad reálným obsahem scénářů (T019). Ověřuje hlavní
+ * akceptační scénáře (T018 § Acceptance): výběr scénáře → průchod otázkami
+ * s „nevím" → reload uprostřed → pokračování → dokončení; krok zpět se změnou
+ * odpovědi přepočítá větev; celé flow na mobilu; nepřihlášený dokončí guide bez
+ * registrace. Vše běží ANONYMNĚ (bez storageState).
  */
 
-/** Otevře výběr scénáře a spustí hlavní scénář „Co chcete vyřešit?". */
-async function startMainScenario(page: Page): Promise<void> {
+/** Otevře výběr scénáře („Co chcete vyřešit?") a spustí scénář dle názvu karty. */
+async function startScenario(page: Page, cardName: string): Promise<void> {
   await page.goto("/guide");
   await expect(
     page.getByRole("heading", { name: "Co chcete vyřešit?" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Co chcete vyřešit?" }).click();
+  await page.getByRole("button", { name: cardName }).click();
   await page.waitForURL("**/guide/**");
 }
 
-/** Vybere možnost single-choice podle jejího labelu a potvrdí „Pokračovat". */
+/** Vybere možnost single/multi-choice podle jejího labelu a potvrdí „Pokračovat". */
 async function chooseAndContinue(
   page: Page,
   optionLabel: string,
@@ -29,15 +30,15 @@ async function chooseAndContinue(
 test("výběr scénáře → otázky s „nevím“ → reload uprostřed → dokončení", async ({
   page,
 }) => {
-  await startMainScenario(page);
+  await startScenario(page, "Chci rekonstruovat dům");
 
-  // 1) intent — rekonstrukce (rozvětví na lokalitu, vlastnictví, podklady).
+  // 1) vlastnický vztah (§9.2).
   await expect(
-    page.getByRole("heading", { name: "Co chcete vyřešit?" }),
+    page.getByRole("heading", { name: "Jaký máte vztah k nemovitosti?" }),
   ).toBeVisible();
-  await chooseAndContinue(page, "Chci rekonstruovat dům nebo byt");
+  await chooseAndContinue(page, "Již vlastním");
 
-  // 2) lokalita — stačí město.
+  // 2) lokalita — stačí město (§9.1).
   await expect(
     page.getByRole("heading", { name: "Kde se záměr nachází?" }),
   ).toBeVisible();
@@ -46,32 +47,44 @@ test("výběr scénáře → otázky s „nevím“ → reload uprostřed → do
 
   // Reload uprostřed průchodu — perzistovaný stav se obnoví na dalším kroku.
   await expect(
-    page.getByRole("heading", { name: "Jaký máte vztah k nemovitosti?" }),
+    page.getByRole("heading", { name: "Jak starý je dům?" }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Jaký máte vztah k nemovitosti?" }),
+    page.getByRole("heading", { name: "Jak starý je dům?" }),
   ).toBeVisible();
   // Průběžné shrnutí drží dřívější odpovědi i po reloadu (desktop postranní panel;
   // stejná hodnota je i ve skryté mobilní variantě, proto `.first()`).
   await expect(page.getByText("Praha", { exact: true }).first()).toBeVisible();
 
-  // 3) vlastnictví.
-  await chooseAndContinue(page, "Již vlastním");
+  // 3) stáří domu — „Nevím" nikdy nezablokuje postup.
+  await page.getByRole("button", { name: "Nevím" }).click();
 
-  // 4) rozpočet — „potřebuji odhad" nevětví na částku.
+  // 4) rozsah rekonstrukce (multi-choice).
+  await expect(
+    page.getByRole("heading", { name: "Co má rekonstrukce zahrnovat?" }),
+  ).toBeVisible();
+  await chooseAndContinue(page, "Střecha");
+
+  // 5) bourání — „Ne" nevětví na otázku nosnosti.
+  await expect(
+    page.getByRole("heading", { name: "Plánujete bourat nebo posouvat stěny?" }),
+  ).toBeVisible();
+  await chooseAndContinue(page, "Ne");
+
+  // 6) rozpočet — „potřebuji odhad" nevětví na částku.
   await expect(
     page.getByRole("heading", { name: "Znáte rozpočet?" }),
   ).toBeVisible();
   await chooseAndContinue(page, "Potřebuji odhad");
 
-  // 5) termín — „Nevím" nikdy nezablokuje postup.
+  // 7) termín — „Nevím" opět nezablokuje.
   await expect(
     page.getByRole("heading", { name: "Kdy chcete začít?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Nevím" }).click();
 
-  // 6) podklady (nepovinné) — přeskočit → tím se guide dokončí.
+  // 8) podklady (nepovinné) — přeskočit → tím se guide dokončí.
   await expect(
     page.getByRole("heading", { name: /Máte podklady/ }),
   ).toBeVisible();
@@ -84,28 +97,44 @@ test("výběr scénáře → otázky s „nevím“ → reload uprostřed → do
 });
 
 test("krok zpět se změnou odpovědi přepočítá větev", async ({ page }) => {
-  await startMainScenario(page);
+  await startScenario(page, "Chci rekonstruovat dům");
 
-  // Nový dům → větev s fází stavby, bez otázky na vlastnictví.
-  await chooseAndContinue(page, "Chci postavit nový dům");
+  await chooseAndContinue(page, "Již vlastním");
+  await page.getByLabel("Město / obec").fill("Brno");
+  await page.getByRole("button", { name: "Pokračovat" }).click();
+  await page.getByRole("button", { name: "Nevím" }).click(); // stáří domu
   await expect(
-    page.getByRole("heading", { name: "Kde se záměr nachází?" }),
+    page.getByRole("heading", { name: "Co má rekonstrukce zahrnovat?" }),
+  ).toBeVisible();
+  await chooseAndContinue(page, "Změny dispozice");
+
+  // Bourání „ano" odkryje povinnou otázku na nosné stěny (§11).
+  await expect(
+    page.getByRole("heading", { name: "Plánujete bourat nebo posouvat stěny?" }),
+  ).toBeVisible();
+  await chooseAndContinue(page, "Ano, chci bourat stěny");
+  await expect(
+    page.getByRole("heading", {
+      name: "Víte, zda je některá z těchto stěn nosná?",
+    }),
   ).toBeVisible();
 
-  // Zpět na první otázku a změna záměru na „pouze konzultaci".
+  // Zpět na bourání a změna odpovědi na „Ne".
   await page.getByRole("button", { name: "Zpět" }).click();
   await expect(
-    page.getByRole("heading", { name: "Co chcete vyřešit?" }),
+    page.getByRole("heading", { name: "Plánujete bourat nebo posouvat stěny?" }),
   ).toBeVisible();
-  await chooseAndContinue(page, "Chci pouze konzultaci");
+  await chooseAndContinue(page, "Ne");
 
-  // Konzultace nemá lokalitu ani fázi stavby → další otázka je rovnou rozpočet
+  // Otázka na nosnost zmizela → další krok je rovnou rozpočet
   // (důkaz, že se větev přepočítala, ne pokračovalo v původní cestě).
   await expect(
     page.getByRole("heading", { name: "Znáte rozpočet?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Kde se záměr nachází?" }),
+    page.getByRole("heading", {
+      name: "Víte, zda je některá z těchto stěn nosná?",
+    }),
   ).toHaveCount(0);
 });
 
@@ -113,19 +142,26 @@ test.describe("mobilní viewport", () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
   test("celé flow projde na mobilu bez registrace", async ({ page }) => {
-    await startMainScenario(page);
+    await startScenario(page, "Chci pouze konzultaci");
 
-    await chooseAndContinue(page, "Chci pouze konzultaci");
     await expect(
-      page.getByRole("heading", { name: "Znáte rozpočet?" }),
+      page.getByRole("heading", { name: "Čeho se má konzultace týkat?" }),
     ).toBeVisible();
-    await chooseAndContinue(page, "Neznám");
+    await chooseAndContinue(page, "Návrh / architektura");
+
+    // Volný popis je nepovinný — přeskočit.
     await expect(
-      page.getByRole("heading", { name: "Kdy chcete začít?" }),
+      page.getByRole("heading", {
+        name: "Popište krátce, co byste chtěli probrat.",
+      }),
     ).toBeVisible();
-    // Poslední viditelný krok → primární akce se jmenuje „Dokončit".
-    await page.getByText("Do 3 měsíců", { exact: true }).click();
-    await page.getByRole("button", { name: "Dokončit" }).click();
+    await page.getByRole("button", { name: "Přeskočit" }).click();
+
+    // Poslední krok (podklady) — přeskočením se guide dokončí.
+    await expect(
+      page.getByRole("heading", { name: /Máte podklady/ }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Přeskočit" }).click();
 
     await expect(page.getByRole("heading", { name: "Hotovo!" })).toBeVisible();
   });

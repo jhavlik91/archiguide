@@ -849,6 +849,11 @@ model GuideScenario {
   /// Vyhodnocuje engine nad odpověďmi; UI (T020) je zpracuje jako varování.
   conflicts Json @default("[]")
 
+  /// Výstupy koncových větví (T019). JSON: `GuideOutcome[]` — mapování odpovědí na
+  /// doporučené profese (slugy T005), další krok, podklady a `safetyWarning` (§15).
+  /// Každá průchozí větev musí sednout aspoň na jeden výstup (žádná slepá ulička).
+  outcomes Json @default("[]")
+
   steps    GuideStep[]
   sessions GuideSession[]
 
