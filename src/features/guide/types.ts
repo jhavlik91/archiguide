@@ -252,3 +252,47 @@ export interface GuideSummary {
   staleAnswerKeys: string[];
   progress: GuideProgress;
 }
+
+// --- Závěrečný výsledek (T020) ----------------------------------------------
+//
+// Podklad pro souhrnnou obrazovku: rozřešené výstupy s NÁZVY profesí (slugy z dat
+// se zde přeloží přes taxonomii T005), bezpečnostní upozornění (§15), rozpory a
+// příznak „málo informací". Je to čistě PREZENTAČNÍ tvar — žádná logika navíc,
+// žádné vymyšlené závěry (zadani/16 §4): render jen zobrazí, co engine rozhodl.
+
+/** Doporučená profese rozřešená na název pro zobrazení. */
+export interface GuideResolvedProfession {
+  slug: string;
+  name: string;
+}
+
+/** Jeden výstup koncové větve připravený k renderu v souhrnu. */
+export interface GuideResultOutcome {
+  key: string;
+  /** Doporučené profese s názvy, v pořadí priority. */
+  professions: GuideResolvedProfession[];
+  /** Doporučený další krok + vysvětlení „proč" (lidský text). */
+  nextStep: string;
+  /** Podklady k přípravě před oslovením profesionála. */
+  prepare: string[];
+  /** Bezpečnostní upozornění (§15). */
+  safetyWarning: boolean;
+  /** Doplňující vysvětlení (zejména scénář H). */
+  note?: string;
+}
+
+export interface GuideResult {
+  /** Platné výstupy v pořadí priority (první = primární). */
+  outcomes: GuideResultOutcome[];
+  /** Podmnožina výstupů s bezpečnostním upozorněním (§15) — render napřed a výrazně. */
+  safetyOutcomes: GuideResultOutcome[];
+  /** Rozpory v odpovědích — jemné, NEBLOKUJÍCÍ upozornění (§8). */
+  conflicts: GuideConflict[];
+  /** Viditelné povinné kroky bez hodnotné odpovědi (chybějící podklady). */
+  missing: Array<{ key: string; prompt: string }>;
+  /**
+   * Průvodce nezískal dost informací (samá „nevím"/„přeskočit"). Souhrn to pak
+   * poctivě uvede a doporučí konzultaci, nikdy vymyšlený závěr (zadani/16 §4).
+   */
+  lowConfidence: boolean;
+}

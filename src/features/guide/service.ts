@@ -4,7 +4,9 @@ import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { trackEvent } from "@/lib/analytics";
+import { getProfessionsBySlugs } from "@/features/taxonomy";
 import { applyAnswer, getSummary, resolveGuide } from "./engine";
+import { isLowConfidence, resolveOutcomes } from "./outcomes";
 import { validateAnswer } from "./validation";
 import { canAccessSession, type GuideSessionAccessor } from "./permissions";
 import type {
@@ -12,6 +14,9 @@ import type {
   GuideAnswers,
   GuideConflictRule,
   GuideOutcome,
+  GuideResolvedProfession,
+  GuideResult,
+  GuideResultOutcome,
   GuideScenarioDefinition,
   GuideStepDefinition,
   GuideStepType,
@@ -190,6 +195,14 @@ export interface GuideSessionView {
   /** Efektivní odpovědi (bez stale větví) — aktuální hodnoty pro předvyplnění UI. */
   answers: GuideAnswers;
   summary: GuideSummary;
+  /**
+   * Závěrečný výsledek (T020): rozřešené výstupy s názvy profesí, bezpečnostní
+   * upozornění, rozpory a příznak „málo informací". Naplňuje se v runner-facing
+   * cestách (`buildViewWithResult`), protože vyžaduje DB dotaz do taxonomie.
+   * Bezpečnostní upozornění se tak dá zobrazit i ŽIVĚ během průchodu, ne až v
+   * souhrnu. Lehké náhledy (resume banner) ho nechávají `undefined`.
+   */
+  result?: GuideResult;
 }
 
 function buildView(
@@ -222,6 +235,65 @@ function buildView(
     answers: effectiveAnswers,
     summary: getSummary(def, answers),
   };
+}
+
+/** Odvodí čitelný název z neznámého slugu (fallback, když profese v číselníku chybí). */
+function humanizeSlug(slug: string): string {
+  const words = slug.replace(/-/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Sestaví závěrečný výsledek (T020): rozřeší platné výstupy a přeloží slugy
+ * profesí na názvy přes taxonomii (T005). Vyhodnocuje se nad EFEKTIVNÍMI
+ * odpověďmi (stejně jako engine), takže neplatná větev nic falešného nespustí.
+ * Neznámý slug (číselník se mezitím změnil) dostane čitelný fallback, aby
+ * doporučení nezmizelo.
+ */
+async function buildGuideResult(
+  def: GuideScenarioDefinition,
+  answers: GuideAnswers,
+  summary: GuideSummary,
+): Promise<GuideResult> {
+  const outcomes = resolveOutcomes(def, answers);
+  const names = await getProfessionsBySlugs(
+    outcomes.flatMap((o) => o.professions),
+  );
+  const resolve = (slug: string): GuideResolvedProfession =>
+    names.get(slug) ?? { slug, name: humanizeSlug(slug) };
+
+  const resultOutcomes: GuideResultOutcome[] = outcomes.map((outcome) => ({
+    key: outcome.key,
+    professions: outcome.professions.map(resolve),
+    nextStep: outcome.nextStep,
+    prepare: outcome.prepare ?? [],
+    safetyWarning: outcome.safetyWarning === true,
+    note: outcome.note,
+  }));
+
+  return {
+    outcomes: resultOutcomes,
+    safetyOutcomes: resultOutcomes.filter((o) => o.safetyWarning),
+    conflicts: summary.conflicts,
+    missing: summary.missing,
+    lowConfidence: isLowConfidence(def, answers),
+  };
+}
+
+/** Náhled session i s rozřešeným výsledkem (T020) — pro runner a souhrn. */
+async function buildViewWithResult(
+  session: Parameters<typeof buildView>[0],
+  scenario: ScenarioWithSteps,
+): Promise<GuideSessionView> {
+  const view = buildView(session, scenario);
+  const def = toDefinition(scenario);
+  // `view.summary` se předává dál, aby se conflicts/missing nepočítaly podruhé.
+  view.result = await buildGuideResult(
+    def,
+    readAnswers(session.answers),
+    view.summary,
+  );
+  return view;
 }
 
 // --- Životní cyklus session -------------------------------------------------
@@ -274,7 +346,7 @@ export async function startSession(params: {
     anonymous: session.userId === null,
   });
 
-  return { ok: true, view: buildView(session, scenario) };
+  return { ok: true, view: await buildViewWithResult(session, scenario) };
 }
 
 /** Načte session i s jejím scénářem; `null`, pokud neexistuje. */
@@ -299,7 +371,10 @@ export async function getSession(
   if (!session) return { ok: false, reason: "not_found" };
   if (!canAccessSession(session, accessor))
     return { ok: false, reason: "forbidden" };
-  return { ok: true, view: buildView(session, session.scenario) };
+  return {
+    ok: true,
+    view: await buildViewWithResult(session, session.scenario),
+  };
 }
 
 /** Lehký náhled rozpracované session pro „resume" banner (homepage/dashboard). */
@@ -372,7 +447,10 @@ export async function answerStep(params: {
   if (!canAccessSession(session, params.accessor)) {
     return { ok: false, reason: "forbidden" };
   }
-  if (session.state !== "active") return { ok: false, reason: "not_active" };
+  // Editace odpovědi ze souhrnu (T020): `completed` session smí přijmout novou
+  // odpověď a přepočítat se — změna dřívější odpovědi může znovu otevřít větev
+  // (`completed` → `active`). Opuštěná session je terminální.
+  if (session.state === "abandoned") return { ok: false, reason: "not_active" };
 
   const def = toDefinition(session.scenario);
   const step = def.steps.find((s) => s.key === params.stepKey);
@@ -389,12 +467,20 @@ export async function answerStep(params: {
 
   const resolved = resolveGuide(def, applied.answers);
   const nowComplete = resolved.progress.complete;
+  // První dokončení = session je teď kompletní a ještě žádné dokončení nemá.
+  // Reopen → recomplete cyklus (editace ze souhrnu) tak neopakuje timestamp
+  // ani event.
+  const firstCompletion = nowComplete && session.completedAt === null;
 
   const updated = await db.guideSession.update({
     where: { id: session.id },
     data: {
       answers: toJson(applied.answers),
-      ...(nowComplete ? { state: "completed", completedAt: new Date() } : {}),
+      // Stav se určuje pokaždé: editace ze souhrnu může větev znovu otevřít
+      // (completed → active) i naopak. `completedAt` drží první dokončení,
+      // proto se nikdy nenuluje.
+      state: nowComplete ? "completed" : "active",
+      ...(firstCompletion ? { completedAt: new Date() } : {}),
     },
   });
 
@@ -404,7 +490,8 @@ export async function answerStep(params: {
     status: params.answer.status,
     staleAnswerKeys: applied.staleAnswerKeys,
   });
-  if (nowComplete) {
+  // Event `completed` jen při PRVNÍM přechodu do completed, ne při editaci hotové.
+  if (firstCompletion) {
     trackEvent("guide.completed", {
       sessionId: session.id,
       scenarioSlug: def.slug,
@@ -412,7 +499,10 @@ export async function answerStep(params: {
     });
   }
 
-  return { ok: true, view: buildView(updated, session.scenario) };
+  return {
+    ok: true,
+    view: await buildViewWithResult(updated, session.scenario),
+  };
 }
 
 /** Opustí session (uživatelsky nebo časovým limitem). Idempotentní. */

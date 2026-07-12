@@ -53,7 +53,8 @@ const ANSWER_ERROR_MESSAGES: Record<
 > = {
   not_found: "Průvodce nebyl nalezen.",
   forbidden: "K tomuto průvodci nemáte přístup.",
-  not_active: "Tento průvodce je již dokončený.",
+  // `not_active` po T020 nastává už jen u opuštěné session (completed je editovatelná).
+  not_active: "Tento průvodce byl ukončen.",
   unknown_step: "Neznámý krok.",
   not_visible: "Tento krok teď není na řadě.",
   invalid_answer: "Zkontrolujte prosím zadanou odpověď.",
@@ -99,4 +100,33 @@ export async function abandonGuide(sessionId: string): Promise<void> {
   const accessor = await getGuideAccessor();
   await abandonSession(sessionId, accessor);
   redirect("/guide");
+}
+
+// --- Analytika souhrnu (T020) -----------------------------------------------
+
+/**
+ * Zaznamená zobrazení souhrnu (T020) a odvozené eventy: `guide.summary_viewed`
+ * vždy, `guide.conflict_shown` při rozporech, `guide.safety_warning_shown` při
+ * bezpečnostním upozornění. Volá se z klienta po zobrazení souhrnu (jednou za
+ * mount). Ověří přístup přes `getSession`; cizí/nedokončenou session tiše ignoruje.
+ */
+export async function recordGuideSummaryView(sessionId: string): Promise<void> {
+  const accessor = await getGuideAccessor();
+  const result = await getSession(sessionId, accessor);
+  if (!result.ok || result.view.state !== "completed") return;
+
+  const { view } = result;
+  trackEvent("guide.summary_viewed", {
+    sessionId,
+    scenarioSlug: view.scenarioSlug,
+  });
+  if (view.result && view.result.conflicts.length > 0) {
+    trackEvent("guide.conflict_shown", {
+      sessionId,
+      count: view.result.conflicts.length,
+    });
+  }
+  if (view.result && view.result.safetyOutcomes.length > 0) {
+    trackEvent("guide.safety_warning_shown", { sessionId });
+  }
 }

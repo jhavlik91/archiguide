@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
+  ArrowLeft,
   ChevronLeft,
   CircleCheckBig,
+  FileText,
   HelpCircle,
   Loader2,
   SkipForward,
@@ -12,9 +14,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
-import { submitGuideAnswer } from "../actions";
+import { recordGuideSummaryView, submitGuideAnswer } from "../actions";
 import type { GuideSessionView } from "../service";
 import type { GuideAnswer, GuideAnswerValue } from "../types";
+import { GuideResultView } from "./guide-result";
+import { GuideSafetyWarning } from "./guide-safety-warning";
 import { GuideSummary } from "./guide-summary";
 import {
   StepInput,
@@ -42,6 +46,9 @@ export function GuideRunner({
   const [activeKey, setActiveKey] = useState<string | null>(
     initialView.nextStep?.key ?? null,
   );
+  // Editace ze souhrnu (T020): u dokončené session skočíme na krok a po uložení
+  // se vrátíme na souhrn (nebo pokračujeme, pokud změna znovu otevřela větev).
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -51,6 +58,7 @@ export function GuideRunner({
   const isComplete = view.state === "completed";
   const activeIndex = steps.findIndex((s) => s.key === activeKey);
   const activeStep = activeIndex >= 0 ? steps[activeIndex] : null;
+  const safetyOutcomes = view.result?.safetyOutcomes ?? [];
 
   // Předvyplní draft z uložené odpovědi vždy, když se změní aktivní krok nebo
   // dorazí nový přepočítaný náhled (po odeslání). Psaní draft needituje `view`,
@@ -59,6 +67,16 @@ export function GuideRunner({
     setError(null);
     if (activeStep) setDraft(answerToDraft(view.answers[activeStep.key]));
   }, [activeKey, view, activeStep]);
+
+  // Analytika souhrnu (T020): summary_viewed + odvozené eventy, jednou za mount.
+  // Ref drží záznam i přes přepínání edit ↔ souhrn, aby se event neopakoval.
+  const summaryRecorded = useRef(false);
+  useEffect(() => {
+    if (view.state === "completed" && !summaryRecorded.current) {
+      summaryRecorded.current = true;
+      void recordGuideSummaryView(view.id);
+    }
+  }, [view.state, view.id]);
 
   function submit(answer: GuideAnswer, answeredKey: string) {
     setError(null);
@@ -76,7 +94,16 @@ export function GuideRunner({
       const following = idx >= 0 ? next.visibleSteps[idx + 1] : undefined;
       setView(next);
       setActiveKey(following ? following.key : (next.nextStep?.key ?? null));
+      // Editace skončila: dokončená session se vrátí na souhrn; když edit znovu
+      // otevřel větev (stav zpět `active`), pokračuje se normálním průchodem.
+      setEditing(false);
     });
+  }
+
+  /** Skok na krok ze souhrnu (dokončená session zůstává, jen se edituje). */
+  function editStep(stepKey: string) {
+    setActiveKey(stepKey);
+    setEditing(true);
   }
 
   function submitAnswer() {
@@ -91,13 +118,22 @@ export function GuideRunner({
     );
   }
 
-  if (isComplete) {
-    return <GuideCompletion view={view} />;
+  if (isComplete && !editing) {
+    return <GuideCompletion view={view} onEditStep={editStep} />;
   }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
       <div className="space-y-5">
+        {/* Bezpečnostní upozornění se ukáže IHNED, jakmile ho odpověď spustí (§15). */}
+        <GuideSafetyWarning outcomes={safetyOutcomes} />
+
+        {editing ? (
+          <div className="border-primary/30 bg-primary/5 text-muted-foreground rounded-md border px-4 py-2.5 text-sm">
+            Upravujete odpověď. Po uložení se vrátíte na souhrn.
+          </div>
+        ) : null}
+
         <ProgressHeader
           scenarioName={view.scenarioName}
           answered={progress.answered}
@@ -133,14 +169,25 @@ export function GuideRunner({
               ) : null}
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setActiveKey(steps[activeIndex - 1].key)}
-                  disabled={activeIndex <= 0 || pending}
-                >
-                  <ChevronLeft /> Zpět
-                </Button>
+                {editing ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setEditing(false)}
+                    disabled={pending}
+                  >
+                    <ArrowLeft /> Zpět na souhrn
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setActiveKey(steps[activeIndex - 1].key)}
+                    disabled={activeIndex <= 0 || pending}
+                  >
+                    <ChevronLeft /> Zpět
+                  </Button>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
@@ -172,9 +219,11 @@ export function GuideRunner({
                       disabled={pending}
                     >
                       {pending ? <Loader2 className="animate-spin" /> : null}
-                      {activeIndex === steps.length - 1
-                        ? "Dokončit"
-                        : "Pokračovat"}
+                      {editing
+                        ? "Uložit"
+                        : activeIndex === steps.length - 1
+                          ? "Dokončit"
+                          : "Pokračovat"}
                     </Button>
                   ) : null}
                 </div>
@@ -261,47 +310,79 @@ function ProgressHeader({
   );
 }
 
-function GuideCompletion({ view }: { view: GuideSessionView }) {
+function GuideCompletion({
+  view,
+  onEditStep,
+}: {
+  view: GuideSessionView;
+  onEditStep: (stepKey: string) => void;
+}) {
   const anonymous = view.userId === null;
+  const result = view.result;
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-3 text-center">
         <CircleCheckBig className="text-success mx-auto size-12" />
         <h1 className="text-2xl font-semibold tracking-tight">Hotovo!</h1>
         <p className="text-muted-foreground">
-          Máme podklady k vašemu záměru. Níže je jejich shrnutí.
+          Máme podklady k vašemu záměru. Níže je shrnutí a doporučení, jak dál.
         </p>
       </div>
 
-      <Card>
-        <CardContent className="p-5 sm:p-6">
-          <h2 className="mb-4 text-sm font-semibold">
-            Shrnutí vašich odpovědí
+      {result ? (
+        <GuideResultView
+          result={result}
+          steps={view.visibleSteps}
+          answers={view.answers}
+          onEditStep={onEditStep}
+        />
+      ) : (
+        // Pojistka: náhled bez rozřešeného výsledku (nemělo by nastat na této cestě).
+        <Card>
+          <CardContent className="p-5 sm:p-6">
+            <h2 className="mb-4 text-sm font-semibold">Vaše odpovědi</h2>
+            <GuideSummary
+              steps={view.visibleSteps}
+              answers={view.answers}
+              conflicts={view.summary.conflicts}
+              onEdit={onEditStep}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Další krok: brief (T021 — slot) a uložení na později. */}
+      <Card className="border-primary/40">
+        <CardContent className="space-y-3 p-5 sm:p-6">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <FileText className="text-primary size-5" />
+            Připravit poptávku
           </h2>
-          <GuideSummary
-            steps={view.visibleSteps}
-            answers={view.answers}
-            conflicts={view.summary.conflicts}
-          />
+          <p className="text-muted-foreground text-sm">
+            Ze shrnutí vytvoříme poptávku, kterou pošlete vybraným
+            profesionálům. Tato část se právě dokončuje.
+          </p>
+          <Button disabled>Pokračovat na poptávku (brzy)</Button>
         </CardContent>
       </Card>
 
       {anonymous ? (
-        <Card className="border-primary/40">
+        <Card>
           <CardContent className="space-y-3 p-5 sm:p-6">
-            <h2 className="font-semibold">Uložte si svůj záměr</h2>
+            <h2 className="font-semibold">Uložte si záměr na později</h2>
             <p className="text-muted-foreground text-sm">
               Zaregistrujte se a rozpracovaný záměr se automaticky připojí k
               vašemu účtu — nic nezmizí. Registrace ale není podmínkou.
             </p>
-            <Button asChild>
+            <Button variant="outline" asChild>
               <Link href="/register">Vytvořit účet</Link>
             </Button>
           </CardContent>
         </Card>
       ) : (
         <p className="text-muted-foreground text-center text-sm">
-          Váš záměr je uložen ve vašem účtu.
+          Váš záměr je uložen ve vašem účtu — můžete se k němu kdykoli vrátit.
         </p>
       )}
 
