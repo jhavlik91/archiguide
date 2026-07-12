@@ -1,4 +1,5 @@
 import { OctagonAlert, Phone } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { GuideResultOutcome } from "../types";
 
 /**
@@ -23,7 +24,10 @@ export function GuideSafetyWarning({
     <section
       role="alert"
       aria-labelledby="guide-safety-title"
-      className={`border-destructive/60 bg-destructive/10 rounded-lg border-2 p-4 sm:p-5 ${className ?? ""}`}
+      className={cn(
+        "border-destructive/60 bg-destructive/10 rounded-lg border-2 p-4 sm:p-5",
+        className,
+      )}
     >
       <div className="flex items-start gap-3">
         <OctagonAlert className="text-destructive mt-0.5 size-6 shrink-0" />

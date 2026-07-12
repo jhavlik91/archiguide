@@ -53,7 +53,8 @@ const ANSWER_ERROR_MESSAGES: Record<
 > = {
   not_found: "Průvodce nebyl nalezen.",
   forbidden: "K tomuto průvodci nemáte přístup.",
-  not_active: "Tento průvodce je již dokončený.",
+  // `not_active` po T020 nastává už jen u opuštěné session (completed je editovatelná).
+  not_active: "Tento průvodce byl ukončen.",
   unknown_step: "Neznámý krok.",
   not_visible: "Tento krok teď není na řadě.",
   invalid_answer: "Zkontrolujte prosím zadanou odpověď.",

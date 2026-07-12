@@ -32,7 +32,12 @@ export function GuideResultView({
   answers: GuideAnswers;
   onEditStep: (stepKey: string) => void;
 }) {
-  const [primary, ...secondary] = result.outcomes;
+  // Bezpečnostní výstupy renderuje výhradně banner nahoře — v kartách doporučení
+  // by tentýž text (`nextStep`) běžel podruhé. Karta vždy zbude: záchranný
+  // fallback (bez `when`) platí u každého scénáře.
+  const [primary, ...secondary] = result.outcomes.filter(
+    (o) => !o.safetyWarning,
+  );
   const hasRisks =
     result.conflicts.length > 0 ||
     result.missing.length > 0 ||

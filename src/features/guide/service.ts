@@ -253,6 +253,7 @@ function humanizeSlug(slug: string): string {
 async function buildGuideResult(
   def: GuideScenarioDefinition,
   answers: GuideAnswers,
+  summary: GuideSummary,
 ): Promise<GuideResult> {
   const outcomes = resolveOutcomes(def, answers);
   const names = await getProfessionsBySlugs(
@@ -270,7 +271,6 @@ async function buildGuideResult(
     note: outcome.note,
   }));
 
-  const summary = getSummary(def, answers);
   return {
     outcomes: resultOutcomes,
     safetyOutcomes: resultOutcomes.filter((o) => o.safetyWarning),
@@ -287,7 +287,12 @@ async function buildViewWithResult(
 ): Promise<GuideSessionView> {
   const view = buildView(session, scenario);
   const def = toDefinition(scenario);
-  view.result = await buildGuideResult(def, readAnswers(session.answers));
+  // `view.summary` se předává dál, aby se conflicts/missing nepočítaly podruhé.
+  view.result = await buildGuideResult(
+    def,
+    readAnswers(session.answers),
+    view.summary,
+  );
   return view;
 }
 
@@ -462,16 +467,20 @@ export async function answerStep(params: {
 
   const resolved = resolveGuide(def, applied.answers);
   const nowComplete = resolved.progress.complete;
-  const wasComplete = session.state === "completed";
+  // První dokončení = session je teď kompletní a ještě žádné dokončení nemá.
+  // Reopen → recomplete cyklus (editace ze souhrnu) tak neopakuje timestamp
+  // ani event.
+  const firstCompletion = nowComplete && session.completedAt === null;
 
   const updated = await db.guideSession.update({
     where: { id: session.id },
     data: {
       answers: toJson(applied.answers),
       // Stav se určuje pokaždé: editace ze souhrnu může větev znovu otevřít
-      // (completed → active) i naopak. `completedAt` drží první dokončení.
+      // (completed → active) i naopak. `completedAt` drží první dokončení,
+      // proto se nikdy nenuluje.
       state: nowComplete ? "completed" : "active",
-      completedAt: nowComplete ? (session.completedAt ?? new Date()) : null,
+      ...(firstCompletion ? { completedAt: new Date() } : {}),
     },
   });
 
@@ -482,7 +491,7 @@ export async function answerStep(params: {
     staleAnswerKeys: applied.staleAnswerKeys,
   });
   // Event `completed` jen při PRVNÍM přechodu do completed, ne při editaci hotové.
-  if (nowComplete && !wasComplete) {
+  if (firstCompletion) {
     trackEvent("guide.completed", {
       sessionId: session.id,
       scenarioSlug: def.slug,

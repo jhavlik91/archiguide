@@ -260,11 +260,10 @@ export interface GuideSummary {
 // příznak „málo informací". Je to čistě PREZENTAČNÍ tvar — žádná logika navíc,
 // žádné vymyšlené závěry (zadani/16 §4): render jen zobrazí, co engine rozhodl.
 
-/** Doporučená profese rozřešená na název (+ kategorie) pro zobrazení. */
+/** Doporučená profese rozřešená na název pro zobrazení. */
 export interface GuideResolvedProfession {
   slug: string;
   name: string;
-  categoryName?: string;
 }
 
 /** Jeden výstup koncové větve připravený k renderu v souhrnu. */
