@@ -1,11 +1,13 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { makeThumbnail, makeWebVariant, readDimensions } from "./image";
+import { makeThumbnail, makeWebVariant, readDimensions, renderEdit } from "./image";
 import { getStorage, hashBytes } from "./storage";
 import { MIME_EXTENSION, type AllowedMimeType } from "./types";
 import type { MediaOwnerRef } from "./rules";
+import type { ImageEdit } from "./edit";
 
 /**
  * Datová vrstva médií (T014). Jediné místo, které sahá na `db.mediaAsset` a na
@@ -108,6 +110,81 @@ export async function createAssetFromUpload(
 }
 
 // --- Správa -----------------------------------------------------------------
+
+// --- Úpravy obrázků (T015) --------------------------------------------------
+
+/**
+ * Uloží upravenou verzi assetu jako NOVOU aktivní verzi. Deriváty se renderují
+ * z ORIGINÁLU (ne z předchozí verze) → opakovaná úprava nedegraduje kvalitu
+ * (T015 § Edge cases). Originál i jeho základní deriváty (`thumbnailKey`/`webKey`)
+ * zůstávají nedotčené, takže „vrátit originál" je bezeztrátové.
+ *
+ * Upravené deriváty dostanou vždy nové storage klíče (cache-busting) a předchozí
+ * upravené deriváty se uklidí (best-effort).
+ */
+export async function applyEditToAsset(
+  asset: MediaAssetRow,
+  edit: ImageEdit,
+): Promise<MediaAssetRow> {
+  const storage = getStorage();
+  const originalBytes = await storage.get(asset.originalKey);
+  if (!originalBytes) throw new Error("Originál média není dostupný.");
+
+  const render = await renderEdit(originalBytes, edit);
+
+  const prefix = randomUUID();
+  const editedThumbnailKey = `${prefix}/edited-thumbnail.webp`;
+  const editedWebKey = `${prefix}/edited-web.webp`;
+  await Promise.all([
+    storage.put(editedThumbnailKey, render.thumbnail.data, render.thumbnail.mime),
+    storage.put(editedWebKey, render.web.data, render.web.mime),
+  ]);
+
+  const updated = await db.mediaAsset.update({
+    where: { id: asset.id },
+    data: {
+      editParams: edit,
+      editedThumbnailKey,
+      editedWebKey,
+      editedWidth: render.width,
+      editedHeight: render.height,
+    },
+  });
+
+  await cleanupEditedDerivatives(asset);
+  return updated;
+}
+
+/**
+ * Vrátí asset do podoby originálu: zahodí parametry i upravené deriváty. Základní
+ * deriváty z originálu (`thumbnailKey`/`webKey`) se nikdy nemazaly, takže obnovení
+ * je okamžité a bezeztrátové (T015 § Main flow bod 3). Idempotentní.
+ */
+export async function revertAssetToOriginal(
+  asset: MediaAssetRow,
+): Promise<MediaAssetRow> {
+  const updated = await db.mediaAsset.update({
+    where: { id: asset.id },
+    data: {
+      editParams: Prisma.DbNull,
+      editedThumbnailKey: null,
+      editedWebKey: null,
+      editedWidth: null,
+      editedHeight: null,
+    },
+  });
+  await cleanupEditedDerivatives(asset);
+  return updated;
+}
+
+/** Smaže staré upravené deriváty ze storage (best-effort — chyba nesmí shodit akci). */
+async function cleanupEditedDerivatives(asset: MediaAssetRow): Promise<void> {
+  const storage = getStorage();
+  const keys = [asset.editedThumbnailKey, asset.editedWebKey].filter(
+    (k): k is string => Boolean(k),
+  );
+  await Promise.all(keys.map((k) => storage.delete(k).catch(() => {})));
+}
 
 /** Uloží alt text assetu (`null` = smazán). */
 export async function setAltText(

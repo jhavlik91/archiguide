@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { trackEvent } from "@/lib/analytics";
-import { resolveUploadOwner } from "@/features/media/queries";
+import { resolveUploadOwner, toMediaCard } from "@/features/media/queries";
 import { createAssetFromUpload } from "@/features/media/service";
 import { validateUploadBytes } from "@/features/media/validation";
 import {
   MAX_BATCH_FILES,
   tooLargeMessage,
   unsupportedTypeMessage,
+  type MediaCardData,
 } from "@/features/media/types";
 // Registruje oprávnění médií pro `can()` (side-effect import).
 import "@/features/media/permissions";
@@ -23,14 +24,6 @@ import "@/features/media/permissions";
  */
 
 export const runtime = "nodejs";
-
-type UploadedSummary = {
-  id: string;
-  thumbnailUrl: string;
-  width: number;
-  height: number;
-  altText: string | null;
-};
 
 export async function POST(request: Request): Promise<NextResponse> {
   let form: FormData;
@@ -60,7 +53,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const assets: UploadedSummary[] = [];
+  const assets: MediaCardData[] = [];
   const errors: { name: string; message: string }[] = [];
   let uploadedBytes = 0;
 
@@ -85,13 +78,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         validation.mime,
       );
       uploadedBytes += bytes.byteLength;
-      assets.push({
-        id: asset.id,
-        thumbnailUrl: `/api/media/${asset.id}/thumbnail`,
-        width: asset.width,
-        height: asset.height,
-        altText: asset.altText,
-      });
+      assets.push(toMediaCard(asset));
     } catch {
       // Poškozený/nečitelný obrázek projde sniffem, ale sharp ho odmítne.
       errors.push({

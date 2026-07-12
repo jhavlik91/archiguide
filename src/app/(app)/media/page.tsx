@@ -1,9 +1,6 @@
 import { requireUser } from "@/lib/session";
-import { listMyMedia } from "@/features/media/queries";
-import {
-  MediaLibrary,
-  type MediaCardData,
-} from "@/features/media/components/media-library";
+import { listMyMedia, toMediaCard } from "@/features/media/queries";
+import { MediaLibrary } from "@/features/media/components/media-library";
 
 /**
  * T014 — knihovna médií (`/media`). Osobní knihovna přihlášeného uživatele:
@@ -14,14 +11,7 @@ import {
 export default async function MediaPage() {
   await requireUser();
   const assets = await listMyMedia();
-
-  const cards: MediaCardData[] = assets.map((a) => ({
-    id: a.id,
-    thumbnailUrl: `/api/media/${a.id}/thumbnail`,
-    width: a.width,
-    height: a.height,
-    altText: a.altText,
-  }));
+  const cards = assets.map(toMediaCard);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
