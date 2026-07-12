@@ -1,6 +1,6 @@
 # T023 — Attachment systém
 
-**Track:** E (brief) | **Závislosti:** T004 | **Assignee:** —
+**Track:** E (brief) | **Závislosti:** T004 | **Assignee:** Claude
 
 ## Goal
 Generický systém příloh (dokumenty, PDF, fotky) s explicitní viditelností a sensitivity flagem, použitelný napříč doménami: brief (T022), poptávka (T024), reakce (T027), zprávy (T031). Viz `zadani/10-domain-entities.md` — Attachment.
@@ -38,11 +38,11 @@ Příloha odstraněna, ale referencovaná ve zprávě/briefu → placeholder, ne
 Eventy: `attachment_uploaded`, `attachment_visibility_changed`.
 
 ## Acceptance criteria
-- [ ] Unit testy `canAccess` pro všechny kombinace viditelnost × role.
-- [ ] Privátní příloha není dostupná přes žádnou nepodepsanou URL.
-- [ ] Nová příloha je vždy `private`.
-- [ ] Zveřejnění citlivé přílohy vyžaduje explicitní potvrzení.
-- [ ] Smazaná příloha zobrazí placeholder v konzumujícím kontextu.
+- [x] Unit testy `canAccess` pro všechny kombinace viditelnost × role.
+- [x] Privátní příloha není dostupná přes žádnou nepodepsanou URL.
+- [x] Nová příloha je vždy `private`.
+- [x] Zveřejnění citlivé přílohy vyžaduje explicitní potvrzení.
+- [x] Smazaná příloha zobrazí placeholder v konzumujícím kontextu.
 
 ## Out of scope
 Obrázková knihovna a úpravy pro portfolio (T014, T015), antivirus/scanning, verze souborů.

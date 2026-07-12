@@ -40,7 +40,10 @@ export type AnalyticsEvent =
   | "guide.started"
   | "guide.step_answered"
   | "guide.completed"
-  | "guide.abandoned";
+  | "guide.abandoned"
+  // Attachment systém (T023)
+  | "attachment.uploaded"
+  | "attachment.visibility_changed";
 
 export function trackEvent(
   event: AnalyticsEvent,
