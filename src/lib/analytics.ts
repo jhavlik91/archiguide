@@ -41,6 +41,9 @@ export type AnalyticsEvent =
   | "guide.step_answered"
   | "guide.completed"
   | "guide.abandoned"
+  // Guide — UI runner (T018)
+  | "guide.scenario_selected"
+  | "guide.resumed"
   // Attachment systém (T023)
   | "attachment.uploaded"
   | "attachment.visibility_changed";

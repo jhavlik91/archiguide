@@ -19,9 +19,11 @@ const PROTECTED_PREFIXES = [
   "/profile",
   "/organizations",
   "/settings",
-  "/guide",
   "/admin",
 ];
+// Pozn.: `/guide` je záměrně VEŘEJNÝ (T018). Guide musí projít i nepřihlášený
+// návštěvník (anonymní session přes cookie token); vlastnictví session hlídá
+// engine (`canAccessSession`: shoda userId nebo držení tokenu), ne middleware.
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(

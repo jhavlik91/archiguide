@@ -123,6 +123,33 @@ export async function syncScenario(
   });
 }
 
+/** Nabízený scénář na výběrové obrazovce (T018). */
+export interface GuideScenarioListItem {
+  slug: string;
+  name: string;
+}
+
+/**
+ * Seznam scénářů nabídnutelných na vstupu guide — pro každý slug jeho nejvyšší
+ * `active` verzi (bez duplicit slugů). Řadí dle slugu; UI z nich staví karty
+ * „Co chcete vyřešit?". MVP má jeden scénář, T019 doplní zbytek.
+ */
+export async function listActiveScenarios(): Promise<GuideScenarioListItem[]> {
+  const rows = await db.guideScenario.findMany({
+    where: { active: true },
+    orderBy: [{ slug: "asc" }, { version: "desc" }],
+    select: { slug: true, name: true },
+  });
+  const seen = new Set<string>();
+  const items: GuideScenarioListItem[] = [];
+  for (const row of rows) {
+    if (seen.has(row.slug)) continue;
+    seen.add(row.slug);
+    items.push({ slug: row.slug, name: row.name });
+  }
+  return items;
+}
+
 /** Aktivní scénář pro slug = nejvyšší `active` verze (`null`, žádná neexistuje). */
 async function pickActiveScenario(
   slug: string,
@@ -146,6 +173,14 @@ export interface GuideSessionView {
   version: number;
   state: "active" | "completed" | "abandoned";
   nextStep: GuideStepDefinition | null;
+  /**
+   * Aktuálně viditelné kroky (definice) v pořadí scénáře. UI runner (T018) z nich
+   * vykresluje a edituje libovolný krok; server přitom zůstává autoritou (každá
+   * odpověď se validuje a perzistuje v `answerStep`).
+   */
+  visibleSteps: GuideStepDefinition[];
+  /** Efektivní odpovědi (bez stale větví) — aktuální hodnoty pro předvyplnění UI. */
+  answers: GuideAnswers;
   summary: GuideSummary;
 }
 
@@ -161,7 +196,10 @@ function buildView(
 ): GuideSessionView {
   const def = toDefinition(scenario);
   const answers = readAnswers(session.answers);
-  const { nextStep } = resolveGuide(def, answers);
+  const { nextStep, visibleSteps, effectiveAnswers } = resolveGuide(
+    def,
+    answers,
+  );
   return {
     id: session.id,
     token: session.token,
@@ -172,6 +210,8 @@ function buildView(
     version: scenario.version,
     state: session.state as GuideSessionView["state"],
     nextStep,
+    visibleSteps,
+    answers: effectiveAnswers,
     summary: getSummary(def, answers),
   };
 }
@@ -210,12 +250,10 @@ export async function startSession(params: {
     // Token je @unique — cookie token už drží dřívější session (druhý průchod
     // guide ze stejného prohlížeče). Nová session dostane vlastní token; volající
     // vrstva ho z `view.token` propíše do cookie.
-    if (
-      !(
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002"
-      )
-    ) {
+    if (!(
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    )) {
       throw error;
     }
     session = await createSession(generateToken());
@@ -254,6 +292,46 @@ export async function getSession(
   if (!canAccessSession(session, accessor))
     return { ok: false, reason: "forbidden" };
   return { ok: true, view: buildView(session, session.scenario) };
+}
+
+/** Lehký náhled rozpracované session pro „resume" banner (homepage/dashboard). */
+export interface GuideResumeInfo {
+  sessionId: string;
+  scenarioName: string;
+  answered: number;
+  total: number;
+  ratio: number;
+}
+
+/**
+ * Najde nejnovější ROZPRACOVANOU (`active`) session žadatele — přihlášeného
+ * (dle `userId`) nebo anonyma (dle cookie `token`). Slouží banneru „Rozpracovaný
+ * záměr". Vlastnictví je vynuceno přímo `where` klauzulí, takže cizí session se
+ * nikdy nevrátí. `null`, pokud žádná neběží (nebo žadatel nemá identitu).
+ */
+export async function findResumableSession(
+  accessor: GuideSessionAccessor,
+): Promise<GuideResumeInfo | null> {
+  const owner: Prisma.GuideSessionWhereInput[] = [];
+  if (accessor.userId) owner.push({ userId: accessor.userId });
+  if (accessor.token) owner.push({ token: accessor.token });
+  if (owner.length === 0) return null;
+
+  const session = await db.guideSession.findFirst({
+    where: { state: "active", OR: owner },
+    orderBy: { updatedAt: "desc" },
+    include: { scenario: { include: { steps: true } } },
+  });
+  if (!session) return null;
+
+  const view = buildView(session, session.scenario);
+  return {
+    sessionId: view.id,
+    scenarioName: view.scenarioName,
+    answered: view.summary.progress.answered,
+    total: view.summary.progress.total,
+    ratio: view.summary.progress.ratio,
+  };
 }
 
 export type AnswerResult =
