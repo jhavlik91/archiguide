@@ -43,7 +43,10 @@ export type AnalyticsEvent =
   | "guide.abandoned"
   // Guide — UI runner (T018)
   | "guide.scenario_selected"
-  | "guide.resumed";
+  | "guide.resumed"
+  // Attachment systém (T023)
+  | "attachment.uploaded"
+  | "attachment.visibility_changed";
 
 export function trackEvent(
   event: AnalyticsEvent,
