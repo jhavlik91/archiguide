@@ -144,6 +144,36 @@ export interface GuideConflictRule {
 }
 
 /**
+ * Výstup koncové větve scénáře (T019). Mapuje odpovědi na DOPORUČENÍ: profese
+ * (slugy z taxonomie T005), lidsky psaný další krok a podklady k přípravě.
+ *
+ * INVARIANT „žádná slepá ulička" (legacy-master-spec §53.1, zadani/16 §4): každá
+ * průchozí koncová větev musí odpovídat aspoň jednomu výstupu (hlídá
+ * `outcomes.ts#findUncoveredPaths`). Proto má scénář vždy záchranný výstup bez
+ * `when` (uplatní se, když nesedne žádný specifičtější) — typicky odborná
+ * konzultace/posouzení, nikdy vymyšlený závěr.
+ *
+ * Samotný render výstupu (souhrn, bezpečnostní varování) řeší T020; tady jsou jen
+ * DATA. `safetyWarning` je proto jen flag (§15), ne hotová hláška.
+ */
+export interface GuideOutcome {
+  /** Stabilní klíč koncové větve v rámci scénáře. */
+  key: string;
+  /** Kdy se výstup uplatní. `undefined` = vždy (záchranná síť proti slepé uličce). */
+  when?: GuideCondition;
+  /** Doporučené profese — slugy z taxonomie (T005), v pořadí priority. */
+  professions: string[];
+  /** Doporučený další krok (lidský text). */
+  nextStep: string;
+  /** Podklady, které si má uživatel připravit před oslovením profesionála. */
+  prepare?: string[];
+  /** Bezpečnostní upozornění (§15). Data pro render ve T020. */
+  safetyWarning?: boolean;
+  /** Krátké vysvětlení „proč" (zejména scénář H — „nevím, co potřebuji"). */
+  note?: string;
+}
+
+/**
  * Kompletní definice scénáře. Pořadí `steps` = pořadí kroků (position). Engine
  * i seed pracují s tímto tvarem; service ho staví z DB řádků.
  */
@@ -153,6 +183,8 @@ export interface GuideScenarioDefinition {
   name: string;
   steps: GuideStepDefinition[];
   conflicts?: GuideConflictRule[];
+  /** Výstupy koncových větví (T019). Prázdné pole = scénář bez doporučení. */
+  outcomes?: GuideOutcome[];
 }
 
 // --- Podmínkový DSL ---------------------------------------------------------
