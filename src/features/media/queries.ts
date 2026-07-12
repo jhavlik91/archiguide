@@ -208,7 +208,9 @@ export async function resolveServableFile(
   }
 
   // Veřejný derivát: jen deriváty aktivního assetu použitého v publikovaném obsahu.
-  if (variant !== "original" && asset.status === "active") {
+  // Základní derivát (`base`) veřejný není nikdy — veřejnost vidí jen AKTIVNÍ
+  // (případně upravenou) verzi; neupravený základ patří jen vlastníkovi (editor).
+  if (variant !== "original" && asset.status === "active" && !opts.base) {
     subject.isPublicDerivative = await isUsedInPublished(assetId);
   }
 

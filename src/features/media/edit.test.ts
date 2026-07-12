@@ -58,7 +58,7 @@ describe("rotatedDimensions", () => {
   });
 });
 
-describe("centeredAspctCrop", () => {
+describe("centeredAspectCrop", () => {
   it("čtverec z landscape má stranu = výška a je vycentrovaný", () => {
     expect(centeredAspectCrop(1600, 900, 1, 1)).toEqual({
       left: 350,
