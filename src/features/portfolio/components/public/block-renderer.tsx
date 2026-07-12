@@ -1,16 +1,19 @@
+"use client";
+
 import Link from "next/link";
 import type { PortfolioBlock } from "../../blocks";
 import { GalleryLightbox } from "./gallery-lightbox";
 import { BeforeAfter } from "./before-after";
 
 /**
- * Render obsahových bloků publikovaného díla (T016). Server komponenta —
- * interaktivní bloky (galerie, before/after) deleguje na klientské komponenty.
- * Bloky přicházejí už zvalidované (`parsePortfolioBlocks`), takže se tu jen
- * vykreslují; neznámé typy sem nedorazí.
+ * Render obsahových bloků publikovaného díla (T016). Klientská komponenta —
+ * interaktivní bloky (galerie, before/after) jsou už klientské a stejný render
+ * používá i živý náhled v editoru (T013), aby veřejná verze a náhled vypadaly
+ * shodně (T013 § Acceptance). Vstup je serializovatelný (`PortfolioBlock[]`), takže
+ * ji serverová veřejná stránka i klientský editor vykreslují stejně.
  *
- * Tyto komponenty jsou sdílený render (T016) — náhled v editoru (T013) je použije,
- * aby veřejná verze a náhled vypadaly stejně (T013 § Acceptance).
+ * Bloky přicházejí už zvalidované (`parsePortfolioBlocks`), takže se tu jen
+ * vykreslují; neznámé/neúplné typy sem nedorazí.
  */
 export function BlockRenderer({ blocks }: { blocks: PortfolioBlock[] }) {
   if (blocks.length === 0) return null;
