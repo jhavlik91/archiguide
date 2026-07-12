@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { PORTFOLIO_BLOCK_LABELS } from "../../blocks";
 import { BlockContentEditor } from "./block-inputs";
 import type { EditorBlock } from "./types";
-import type { MediaCardData } from "@/features/media/components/media-library";
+import type { MediaCardData } from "@/features/media/types";
 
 /**
  * Jeden blok v editoru (T013): záhlaví s ovládáním (přeřazení tahem i tlačítky,

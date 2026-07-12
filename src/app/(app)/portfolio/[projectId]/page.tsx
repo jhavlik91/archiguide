@@ -2,14 +2,13 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { getEditableProject } from "@/features/portfolio/queries";
 import { listDraftBlocks } from "@/features/portfolio/blocks-service";
-import { listMyMedia } from "@/features/media/queries";
+import { listMyMedia, toMediaCard } from "@/features/media/queries";
 import { BlockEditor } from "@/features/portfolio/components/editor/block-editor";
 import { MetadataForm } from "@/features/portfolio/components/editor/metadata-form";
 import {
   newBlockId,
   type EditorBlock,
 } from "@/features/portfolio/components/editor/types";
-import type { MediaCardData } from "@/features/media/components/media-library";
 
 /**
  * T013 — blokový editor portfolia (`/portfolio/[projectId]`). Načte editovatelné
@@ -42,13 +41,7 @@ export default async function PortfolioEditorPage({
     content: (block.content ?? {}) as Record<string, unknown>,
   }));
 
-  const cards: MediaCardData[] = assets.map((asset) => ({
-    id: asset.id,
-    thumbnailUrl: `/api/media/${asset.id}/thumbnail`,
-    width: asset.width,
-    height: asset.height,
-    altText: asset.altText,
-  }));
+  const cards = assets.map(toMediaCard);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">

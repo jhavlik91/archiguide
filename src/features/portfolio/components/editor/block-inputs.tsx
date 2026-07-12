@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { MediaCardData } from "@/features/media/components/media-library";
+import type { MediaCardData } from "@/features/media/types";
 import { MediaPicker, type PickedImage } from "./media-picker";
 import type { EditorBlock } from "./types";
 

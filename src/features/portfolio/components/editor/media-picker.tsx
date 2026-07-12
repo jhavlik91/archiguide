@@ -21,7 +21,7 @@ import {
   tooLargeMessage,
   unsupportedTypeMessage,
 } from "@/features/media/types";
-import type { MediaCardData } from "@/features/media/components/media-library";
+import type { MediaCardData } from "@/features/media/types";
 
 /** Vybraný obrázek předaný do bloku: URL derivátu + vazba na asset (usage seam). */
 export type PickedImage = { assetId: string; url: string; alt?: string };
