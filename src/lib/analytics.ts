@@ -44,6 +44,10 @@ export type AnalyticsEvent =
   // Guide — UI runner (T018)
   | "guide.scenario_selected"
   | "guide.resumed"
+  // Guide — shrnutí, rozpory, bezpečnostní warningy (T020)
+  | "guide.summary_viewed"
+  | "guide.conflict_shown"
+  | "guide.safety_warning_shown"
   // Attachment systém (T023)
   | "attachment.uploaded"
   | "attachment.visibility_changed";

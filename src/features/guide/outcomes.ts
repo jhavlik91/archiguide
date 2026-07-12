@@ -58,6 +58,27 @@ export function hasSafetyWarning(
   return resolveOutcomes(def, answers).some((o) => o.safetyWarning === true);
 }
 
+/**
+ * Průvodce nezískal dost informací pro konkrétní závěr: žádný viditelný krok
+ * nemá HODNOTNOU odpověď (samá „nevím"/„přeskočit"). Souhrn to pak poctivě
+ * uvede a doporučí konzultaci místo vymyšleného závěru (zadani/16 §4). Data ho
+ * přesto dovedou k záchrannému výstupu — příznak jen zjemní tón doporučení.
+ */
+export function isLowConfidence(
+  def: GuideScenarioDefinition,
+  answers: GuideAnswers,
+): boolean {
+  const { visibleSteps, effectiveAnswers } = resolveGuide(def, answers);
+  if (visibleSteps.length === 0) return false;
+  // Každý viditelný krok musí být ZODPOVĚZENÝ, ale žádný hodnotně — tj. samá
+  // „nevím"/„přeskočit". Nezodpovězený krok (guide ještě neběží/nedoběhl) se
+  // za „málo informací" nepovažuje.
+  return visibleSteps.every((step) => {
+    const answer = effectiveAnswers[step.key];
+    return answer !== undefined && answer.status !== "answered";
+  });
+}
+
 /** Unikátní slugy profesí ze všech výstupů scénáře (pro validaci taxonomie). */
 export function collectOutcomeProfessions(
   def: GuideScenarioDefinition,

@@ -4,6 +4,8 @@ import {
   enumerateTerminalAnswers,
   findUncoveredPaths,
   getPrimaryOutcome,
+  hasSafetyWarning,
+  isLowConfidence,
   resolveOutcomes,
 } from "./outcomes";
 import type { GuideAnswer, GuideScenarioDefinition } from "./types";
@@ -89,6 +91,49 @@ describe("resolveOutcomes", () => {
       intent: answered("a"),
     });
     expect(primary?.key).toBe("fallback");
+  });
+});
+
+describe("isLowConfidence (T020)", () => {
+  it("samá nevím/přeskočit na viditelných krocích → true", () => {
+    expect(isLowConfidence(fixture, { intent: { status: "unknown" } })).toBe(
+      true,
+    );
+    expect(isLowConfidence(fixture, { intent: { status: "skipped" } })).toBe(
+      true,
+    );
+  });
+
+  it("aspoň jedna hodnotná odpověď → false", () => {
+    expect(isLowConfidence(fixture, { intent: answered("a") })).toBe(false);
+  });
+
+  it("zatím nezodpovězený viditelný krok → false (jde poctivě dál)", () => {
+    expect(isLowConfidence(fixture, {})).toBe(false);
+  });
+});
+
+describe("hasSafetyWarning (T020)", () => {
+  const withSafety: GuideScenarioDefinition = {
+    ...fixture,
+    outcomes: [
+      {
+        key: "danger",
+        when: { op: "equals", step: "intent", value: "a" },
+        professions: ["statik"],
+        nextStep: "Přerušte užívání a volejte pohotovost.",
+        safetyWarning: true,
+      },
+      { key: "fallback", professions: ["architekt"], nextStep: "Konzultace." },
+    ],
+  };
+
+  it("rizikový výstup na platné větvi → true", () => {
+    expect(hasSafetyWarning(withSafety, { intent: answered("a") })).toBe(true);
+  });
+
+  it("jiná větev bez rizikového výstupu → false", () => {
+    expect(hasSafetyWarning(withSafety, { intent: answered("b") })).toBe(false);
   });
 });
 

@@ -43,3 +43,24 @@ export async function findProfession(
   const [best] = await findProfessions(query, options);
   return best ?? null;
 }
+
+/// Přeloží slugy profesí na jejich názvy (+ kategorii) pro zobrazení doporučení
+/// (guide T020). Vrací mapu slug → profese; neznámé slugy v mapě chybí (volající
+/// si doplní fallback). Zahrnuje i archivované profese, aby už rozhodnuté
+/// doporučení nezmizelo kvůli pozdější změně číselníku.
+export async function getProfessionsBySlugs(
+  slugs: string[],
+): Promise<Map<string, { slug: string; name: string; categoryName: string }>> {
+  const unique = [...new Set(slugs)];
+  if (unique.length === 0) return new Map();
+  const rows = await db.profession.findMany({
+    where: { slug: { in: unique } },
+    include: { category: true },
+  });
+  return new Map(
+    rows.map((p) => [
+      p.slug,
+      { slug: p.slug, name: p.name, categoryName: p.category.name },
+    ]),
+  );
+}

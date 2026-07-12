@@ -100,3 +100,32 @@ export async function abandonGuide(sessionId: string): Promise<void> {
   await abandonSession(sessionId, accessor);
   redirect("/guide");
 }
+
+// --- Analytika souhrnu (T020) -----------------------------------------------
+
+/**
+ * Zaznamená zobrazení souhrnu (T020) a odvozené eventy: `guide.summary_viewed`
+ * vždy, `guide.conflict_shown` při rozporech, `guide.safety_warning_shown` při
+ * bezpečnostním upozornění. Volá se z klienta po zobrazení souhrnu (jednou za
+ * mount). Ověří přístup přes `getSession`; cizí/nedokončenou session tiše ignoruje.
+ */
+export async function recordGuideSummaryView(sessionId: string): Promise<void> {
+  const accessor = await getGuideAccessor();
+  const result = await getSession(sessionId, accessor);
+  if (!result.ok || result.view.state !== "completed") return;
+
+  const { view } = result;
+  trackEvent("guide.summary_viewed", {
+    sessionId,
+    scenarioSlug: view.scenarioSlug,
+  });
+  if (view.result && view.result.conflicts.length > 0) {
+    trackEvent("guide.conflict_shown", {
+      sessionId,
+      count: view.result.conflicts.length,
+    });
+  }
+  if (view.result && view.result.safetyOutcomes.length > 0) {
+    trackEvent("guide.safety_warning_shown", { sessionId });
+  }
+}
