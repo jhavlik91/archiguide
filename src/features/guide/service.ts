@@ -193,15 +193,33 @@ export async function startSession(params: {
   const scenario = await pickActiveScenario(params.slug);
   if (!scenario) return { ok: false, reason: "no_active_scenario" };
 
-  const token = params.accessor.token ?? generateToken();
-  const session = await db.guideSession.create({
-    data: {
-      scenarioId: scenario.id,
-      userId: params.accessor.userId ?? null,
-      token,
-      answers: {},
-    },
-  });
+  const createSession = (token: string) =>
+    db.guideSession.create({
+      data: {
+        scenarioId: scenario.id,
+        userId: params.accessor.userId ?? null,
+        token,
+        answers: {},
+      },
+    });
+
+  let session;
+  try {
+    session = await createSession(params.accessor.token ?? generateToken());
+  } catch (error) {
+    // Token je @unique — cookie token už drží dřívější session (druhý průchod
+    // guide ze stejného prohlížeče). Nová session dostane vlastní token; volající
+    // vrstva ho z `view.token` propíše do cookie.
+    if (
+      !(
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      )
+    ) {
+      throw error;
+    }
+    session = await createSession(generateToken());
+  }
 
   trackEvent("guide.started", {
     sessionId: session.id,

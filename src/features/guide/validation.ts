@@ -239,7 +239,7 @@ export function validateScenarioDefinition(
   (def.conflicts ?? []).forEach((rule) => {
     if (!rule.key) errors.push("Pravidlo rozporu bez klíče.");
     if (!rule.message) errors.push(`Rozpor ${rule.key}: chybí zpráva.`);
-    // Rozpor smí odkazovat na kterýkoli krok (i pozdější) — index -1 = bez limitu.
+    // Rozpor smí odkazovat na kterýkoli krok — index za koncem = bez limitu.
     errors.push(
       ...validateCondition(
         rule.when,
