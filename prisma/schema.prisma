@@ -636,7 +636,15 @@ model PortfolioProject {
   /// Měkké smazání. Neprázdné = projekt je zrušený a nikde se nenabízí.
   deletedAt DateTime?
 
+  /// Monotónní verze obsahových bloků draftu (T013). Editor ji načte při otevření
+  /// a posílá zpět při autosave; když se mezitím změní (souběžná editace druhým
+  /// editorem), server uloží stejně (last-write-wins), ale vrátí varování.
+  blocksVersion Int @default(0)
+
   coauthors PortfolioCoauthor[]
+  /// Obsahové bloky DRAFT verze (T013). Publikace (T012) je zmrazí do
+  /// `publishedSnapshot`; veřejná verze čte ze snapshotu, ne odsud.
+  blocks    PortfolioBlock[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -645,6 +653,32 @@ model PortfolioProject {
   @@index([ownerOrgId])
   @@index([status])
   @@map("portfolio_projects")
+}
+
+/// Obsahový blok portfolia (T013). Patří DRAFT verzi díla; pořadí drží `order`
+/// (0…n). `type` je jeden z MVP typů (heading, text, quote, list, table,
+/// technical_data, cta, image, gallery, before_after); `content` je volný JSON
+/// dle typu (Zod schéma ve `features/portfolio/blocks.ts`). Ukládání je „nahraď
+/// vše" v transakci — editor posílá celý dokument, server řádky přepíše. Publikace
+/// bloky zvaliduje (strict) a zmrazí do snapshotu projektu.
+model PortfolioBlock {
+  id        String           @id @default(cuid())
+  projectId String
+  project   PortfolioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// Typ bloku (řetězec, ať přidání typu nevyžaduje DB migraci enumu).
+  type  String
+  /// Pořadí v rámci díla (0-based). Editor přeřazuje změnou tohoto sloupce.
+  order Int
+  /// Obsah bloku dle typu (volný JSON; draft smí být i neúplný, publikace ho pak
+  /// nezvaliduje a vynechá — žádná tichá ztráta draftu).
+  content Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, order])
+  @@map("portfolio_blocks")
 }
 
 /// Spoluautor díla. Jméno se veřejně zobrazí až po `confirmed`; odvolání souhlasu

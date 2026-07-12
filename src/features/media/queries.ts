@@ -164,7 +164,7 @@ export async function getImageEditorContext(
 export type ServableFile = {
   key: string;
   contentType: string;
-  /** Deriváty (veřejné, immutable) lze dlouho cachovat; originál jen soukromě. */
+  /** Veřejné deriváty se cachují s revalidací (ETag v routě); originál jen soukromě. */
   cacheControl: string;
 };
 
@@ -218,10 +218,12 @@ export async function resolveServableFile(
 
   const contentType =
     variant === "original" ? asset.mimeType : "image/webp";
-  // Deriváty veřejně použitého assetu jsou immutable (klíč se nemění) → dlouhá
-  // cache; ostatní (soukromé/originál) drž jen v privátní cache prohlížeče.
+  // Derivát na téže URL se úpravou assetu MĚNÍ (T015) a publikovaný obsah (T013)
+  // odkazuje na neverzované URL → veřejný derivát se smí cachovat jen s revalidací
+  // (ETag z klíče derivátu řeší routa; nezměněný obsah vyjde na levné 304).
+  // Soukromé varianty/originál drž jen v privátní cache prohlížeče.
   const cacheControl = subject.isPublicDerivative
-    ? "public, max-age=31536000, immutable"
+    ? "public, no-cache"
     : "private, no-cache";
 
   return { key, contentType, cacheControl };

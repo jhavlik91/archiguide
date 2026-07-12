@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getActor } from "@/lib/session";
 import { trackEvent } from "@/lib/analytics";
+// Side-effect import: zapojí seamy obsahových bloků (T013) — reálnou detekci
+// obsahu pro publikační gate a zdroj bloků pro snapshot. Bez něj by publish jel
+// na zástupné funkci „obsah je přítomný" (viz service.ts / blocks-service.ts).
+import "./blocks-service";
 // Import zároveň registruje oprávnění portfolia (portfolio.create/edit/…).
 import {
   canCreatePortfolio,

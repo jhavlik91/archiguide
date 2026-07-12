@@ -33,6 +33,16 @@ export async function GET(
   const servable = await resolveServableFile(id, variant, { base });
   if (!servable) return new Response(null, { status: 404 });
 
+  // Obsah na téže URL se úpravou assetu mění (T015), ale storage klíč je pro
+  // konkrétní obsah stabilní → přesný ETag. Nezměněný obrázek vyjde na 304.
+  const etag = `"${servable.key}"`;
+  if (request.headers.get("if-none-match") === etag) {
+    return new Response(null, {
+      status: 304,
+      headers: { ETag: etag, "Cache-Control": servable.cacheControl },
+    });
+  }
+
   const data = await getStorage().get(servable.key);
   if (!data) return new Response(null, { status: 404 });
 
@@ -41,6 +51,7 @@ export async function GET(
     headers: {
       "Content-Type": servable.contentType,
       "Cache-Control": servable.cacheControl,
+      ETag: etag,
       "Content-Length": String(data.byteLength),
     },
   });
