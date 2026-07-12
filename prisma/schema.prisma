@@ -731,6 +731,18 @@ model MediaAsset {
   /// Alternativní text (přístupnost). Volitelný, doplnitelný v knihovně.
   altText String?
 
+  /// Úpravy obrázku (T015): normalizované parametry aktivní verze (rotace, crop,
+  /// jas/kontrast/saturace). `null` = originál beze změn. Deriváty se vždy renderují
+  /// z ORIGINÁLU s těmito parametry — opakovaná úprava nedegraduje kvalitu.
+  editParams Json?
+  /// Storage klíč náhledu upravené verze. `null` = zobrazuje se `thumbnailKey` (originál).
+  editedThumbnailKey String?
+  /// Storage klíč web varianty upravené verze. `null` = zobrazuje se `webKey` (originál).
+  editedWebKey String?
+  /// Rozměry upravené verze (po rotaci/cropu). `null` = platí `width`/`height` originálu.
+  editedWidth  Int?
+  editedHeight Int?
+
   status MediaStatus @default(active)
 
   createdAt DateTime @default(now())
