@@ -57,6 +57,20 @@ export function tooLargeMessage(name?: string): string {
     : `Soubor je příliš velký (max ${mb} MB).`;
 }
 
+/**
+ * Serializovatelný pohled na asset pro knihovnu (thumbnail se servíruje routou).
+ * Rozměry jsou AKTIVNÍ verze (po případné úpravě, T015); `edited` značí, že asset
+ * má aktivní úpravu (jinak je to originál).
+ */
+export type MediaCardData = {
+  id: string;
+  thumbnailUrl: string;
+  width: number;
+  height: number;
+  altText: string | null;
+  edited: boolean;
+};
+
 /** Srozumitelná hláška při nepodporovaném typu souboru. */
 export function unsupportedTypeMessage(name?: string): string {
   return name

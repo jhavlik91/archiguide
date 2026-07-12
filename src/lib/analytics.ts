@@ -32,8 +32,15 @@ export type AnalyticsEvent =
   | "portfolio.preview_used"
   // Média (T014)
   | "media.uploaded"
+  // Úpravy obrázků (T015)
+  | "media.edited"
   // Portfolio — veřejná stránka (T016)
-  | "portfolio.viewed";
+  | "portfolio.viewed"
+  // Guide (T017)
+  | "guide.started"
+  | "guide.step_answered"
+  | "guide.completed"
+  | "guide.abandoned";
 
 export function trackEvent(
   event: AnalyticsEvent,

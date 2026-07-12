@@ -6,6 +6,7 @@ import {
   WEB_MAX_DIMENSION,
   type AllowedMimeType,
 } from "./types";
+import { aspectRatio, centeredAspectCrop, type ImageEdit } from "./edit";
 
 /**
  * Zpracování obrázků médií (T014) přes `sharp`. Zodpovídá za:
@@ -77,4 +78,56 @@ export function makeWebVariant(input: Buffer): Promise<Derivative> {
 export async function hasExif(input: Buffer): Promise<boolean> {
   const meta = await sharp(input).metadata();
   return meta.exif !== undefined && meta.exif !== null;
+}
+
+// --- Úpravy obrázků (T015) --------------------------------------------------
+
+export type EditRender = {
+  thumbnail: Derivative;
+  web: Derivative;
+  /** Rozměry upravené (full-res) verze — po rotaci a cropu, před resize derivátů. */
+  width: number;
+  height: number;
+};
+
+/**
+ * Renderuje upravenou verzi obrázku z BAJTŮ ORIGINÁLU podle parametrů úpravy.
+ * Klíčové: vstupem je vždy originál (ne předchozí derivát), takže opakovaná úprava
+ * kvalitu nedegraduje (T015 § Edge cases). Pořadí: EXIF auto-orient → rotace uživatele
+ * → crop (centrovaný výřez poměru) → jas/kontrast/saturace. Z výsledku se pak
+ * vygenerují stejné deriváty jako při uploadu (thumbnail + web, bez EXIF).
+ */
+export async function renderEdit(originalBytes: Buffer, edit: ImageEdit): Promise<EditRender> {
+  // 1. EXIF auto-orient (stejný základ jako u uploadových derivátů).
+  let buf = await sharp(originalBytes).rotate().toBuffer();
+
+  // 2. Rotace uživatele po 90°.
+  if (edit.rotate !== 0) {
+    buf = await sharp(buf).rotate(edit.rotate).toBuffer();
+  }
+
+  // 3. Crop na centrovaný výřez zvoleného poměru stran.
+  const ratio = aspectRatio(edit.crop);
+  if (ratio) {
+    const meta = await sharp(buf).metadata();
+    const rect = centeredAspectCrop(meta.width ?? 0, meta.height ?? 0, ratio[0], ratio[1]);
+    buf = await sharp(buf).extract(rect).toBuffer();
+  }
+
+  // 4. Barevné úpravy: jas/saturace přes modulate, kontrast lineárně kolem 128.
+  if (edit.brightness !== 1 || edit.saturation !== 1 || edit.contrast !== 1) {
+    let pipeline = sharp(buf).modulate({
+      brightness: edit.brightness,
+      saturation: edit.saturation,
+    });
+    if (edit.contrast !== 1) {
+      // out = a·in + b; a = kontrast, b = 128·(1−a) drží střed (šedou) na místě.
+      pipeline = pipeline.linear(edit.contrast, 128 * (1 - edit.contrast));
+    }
+    buf = await pipeline.toBuffer();
+  }
+
+  const meta = await sharp(buf).metadata();
+  const [thumbnail, web] = await Promise.all([makeThumbnail(buf), makeWebVariant(buf)]);
+  return { thumbnail, web, width: meta.width ?? 0, height: meta.height ?? 0 };
 }

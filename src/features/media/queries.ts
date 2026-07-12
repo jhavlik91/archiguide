@@ -13,7 +13,9 @@ import {
 import { getAssetById, listActiveAssets, type MediaAssetRow } from "./service";
 import { ownerRefOf, type MediaOwnerRef } from "./rules";
 import { isUsedInPublished } from "./usage";
-import { MIME_EXTENSION, type MediaVariant } from "./types";
+import { MIME_EXTENSION, type MediaCardData, type MediaVariant } from "./types";
+import { assetVersion, mediaVariantUrl } from "./urls";
+import { normalizeEdit, type ImageEdit } from "./edit";
 
 /**
  * Čtecí/autorizační vrstva médií (T014) pro stránky a serve/upload routy. Vynucuje
@@ -46,6 +48,29 @@ export async function listMyMedia(): Promise<MediaAssetRow[]> {
   const actor = await getActor();
   if (actor.kind !== "user") return [];
   return listActiveAssets({ type: "user", userId: actor.userId });
+}
+
+/** Rozměry AKTIVNÍ verze assetu: upravené (T015), jinak originál. */
+export function activeDimensions(asset: MediaAssetRow): { width: number; height: number } {
+  if (asset.editedWidth !== null && asset.editedHeight !== null) {
+    return { width: asset.editedWidth, height: asset.editedHeight };
+  }
+  return { width: asset.width, height: asset.height };
+}
+
+/** Serializovatelná karta assetu pro knihovnu (versionovaný náhled + aktivní rozměry). */
+export function toMediaCard(asset: MediaAssetRow): MediaCardData {
+  const dims = activeDimensions(asset);
+  return {
+    id: asset.id,
+    thumbnailUrl: mediaVariantUrl(asset.id, "thumbnail", {
+      version: assetVersion(asset.updatedAt),
+    }),
+    width: dims.width,
+    height: dims.height,
+    altText: asset.altText,
+    edited: asset.editParams !== null,
+  };
 }
 
 // --- Upload -----------------------------------------------------------------
@@ -100,6 +125,40 @@ export async function getManageableAsset(
   return asset;
 }
 
+/** Kontext pro editor úprav (T015): aktuální parametry, náhled originálu, upozornění. */
+export type ImageEditorContext = {
+  edit: ImageEdit;
+  /** Náhled ZÁKLADNÍ (neupravené) verze — editor počítá úpravu vždy z originálu. */
+  baseWebUrl: string;
+  /** Rozměry originálu (pro poměr stran a kontrolu minimálního výřezu na klientu). */
+  baseWidth: number;
+  baseHeight: number;
+  /** Je asset použitý v publikovaném obsahu? (úprava se projeví hned — upozornit). */
+  usedInPublished: boolean;
+};
+
+/**
+ * Načte kontext editoru pro asset, který actor smí spravovat (jinak `null`).
+ * Náhled cílí na základní derivát (`?base=1`), aby se úprava vždy skládala
+ * z originálu, ne z už upravené verze.
+ */
+export async function getImageEditorContext(
+  assetId: string,
+): Promise<ImageEditorContext | null> {
+  const asset = await getManageableAsset(assetId);
+  if (!asset) return null;
+  return {
+    edit: normalizeEdit(asset.editParams),
+    baseWebUrl: mediaVariantUrl(asset.id, "web", {
+      base: true,
+      version: assetVersion(asset.updatedAt),
+    }),
+    baseWidth: asset.width,
+    baseHeight: asset.height,
+    usedInPublished: await isUsedInPublished(asset.id),
+  };
+}
+
 // --- Servírování ------------------------------------------------------------
 
 export type ServableFile = {
@@ -113,20 +172,30 @@ export type ServableFile = {
  * Vyhodnotí požadavek na servírování varianty assetu a vrátí storage klíč +
  * hlavičky, nebo `null` (nedostupné / bez oprávnění). Originál dostane jen
  * vlastník; derivát i veřejnost, když je asset použitý v publikovaném obsahu.
+ *
+ * U upravené verze (T015) se pro `thumbnail`/`web` přednostně vydá UPRAVENÝ derivát.
+ * `opts.base` vynutí základní derivát z originálu (potřebuje editor, aby počítal
+ * úpravu vždy z originálu, ne z už upraveného náhledu).
  */
 export async function resolveServableFile(
   assetId: string,
   variant: MediaVariant,
+  opts: { base?: boolean } = {},
 ): Promise<ServableFile | null> {
   const [actor, asset] = await Promise.all([getActor(), getAssetById(assetId)]);
   if (!asset) return null;
 
+  const editedKey =
+    variant === "thumbnail"
+      ? asset.editedThumbnailKey
+      : variant === "web"
+        ? asset.editedWebKey
+        : null;
   const key =
     variant === "original"
       ? asset.originalKey
-      : variant === "thumbnail"
-        ? asset.thumbnailKey
-        : asset.webKey;
+      : (!opts.base && editedKey) ||
+        (variant === "thumbnail" ? asset.thumbnailKey : asset.webKey);
   if (!key) return null;
 
   const owner = ownerRefOf(asset);
@@ -139,7 +208,9 @@ export async function resolveServableFile(
   }
 
   // Veřejný derivát: jen deriváty aktivního assetu použitého v publikovaném obsahu.
-  if (variant !== "original" && asset.status === "active") {
+  // Základní derivát (`base`) veřejný není nikdy — veřejnost vidí jen AKTIVNÍ
+  // (případně upravenou) verzi; neupravený základ patří jen vlastníkovi (editor).
+  if (variant !== "original" && asset.status === "active" && !opts.base) {
     subject.isPublicDerivative = await isUsedInPublished(assetId);
   }
 

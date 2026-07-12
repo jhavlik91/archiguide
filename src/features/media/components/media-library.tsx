@@ -2,10 +2,11 @@
 
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
+import { ImageIcon, Loader2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -27,15 +28,8 @@ import {
 } from "../types";
 import { deleteMediaAsset, saveAltText } from "../actions";
 import type { MediaUsage } from "../usage";
-
-/** Serializovatelný pohled na asset pro knihovnu (thumbnail se servíruje routou). */
-export type MediaCardData = {
-  id: string;
-  thumbnailUrl: string;
-  width: number;
-  height: number;
-  altText: string | null;
-};
+import type { MediaCardData } from "../types";
+import { ImageEditor } from "./image-editor";
 
 type UploadResponse = {
   assets?: MediaCardData[];
@@ -50,6 +44,7 @@ export function MediaLibrary({ initialAssets }: { initialAssets: MediaCardData[]
   const [assets, setAssets] = useState<MediaCardData[]>(initialAssets);
   const [uploading, setUploading] = useState(false);
   const [toDelete, setToDelete] = useState<MediaCardData | null>(null);
+  const [toEdit, setToEdit] = useState<MediaCardData | null>(null);
   const [blockedUsages, setBlockedUsages] = useState<MediaUsage[] | null>(null);
   const [deletePending, startDelete] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +118,11 @@ export function MediaLibrary({ initialAssets }: { initialAssets: MediaCardData[]
     });
   }
 
+  /** Po úpravě/revertu: nahraď kartu (nový náhled i rozměry) na místě. */
+  function onEdited(updated: MediaCardData) {
+    setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+  }
+
   function confirmDelete() {
     const asset = toDelete;
     if (!asset) return;
@@ -182,7 +182,7 @@ export function MediaLibrary({ initialAssets }: { initialAssets: MediaCardData[]
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {assets.map((asset) => (
             <Card key={asset.id} className="overflow-hidden">
-              <div className="bg-muted flex aspect-square items-center justify-center overflow-hidden">
+              <div className="bg-muted relative flex aspect-square items-center justify-center overflow-hidden">
                 {/* Vlastní <img>, ne next/image: soukromé náhledy se servírují přes
                     chráněnou routu s cookies prohlížeče — next/image je fetchuje
                     serverově bez session, což by u soukromého assetu vrátilo 404. */}
@@ -195,6 +195,11 @@ export function MediaLibrary({ initialAssets }: { initialAssets: MediaCardData[]
                   className="h-full w-full object-cover"
                   loading="lazy"
                 />
+                {asset.edited && (
+                  <Badge variant="secondary" className="absolute left-2 top-2">
+                    Upraveno
+                  </Badge>
+                )}
               </div>
               <CardContent className="space-y-2 p-3">
                 <div className="space-y-1">
@@ -212,17 +217,27 @@ export function MediaLibrary({ initialAssets }: { initialAssets: MediaCardData[]
                     onBlur={(e) => saveAlt(asset, e.target.value)}
                   />
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive w-full justify-start"
-                  onClick={() => {
-                    setBlockedUsages(null);
-                    setToDelete(asset);
-                  }}
-                >
-                  <Trash2 className="size-4" /> Smazat
-                </Button>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 justify-start"
+                    onClick={() => setToEdit(asset)}
+                  >
+                    <SlidersHorizontal className="size-4" /> Upravit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive flex-1 justify-start"
+                    onClick={() => {
+                      setBlockedUsages(null);
+                      setToDelete(asset);
+                    }}
+                  >
+                    <Trash2 className="size-4" /> Smazat
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -290,6 +305,13 @@ export function MediaLibrary({ initialAssets }: { initialAssets: MediaCardData[]
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Editor úprav obrázku (T015) */}
+      <ImageEditor
+        asset={toEdit}
+        onUpdated={onEdited}
+        onClose={() => setToEdit(null)}
+      />
     </div>
   );
 }

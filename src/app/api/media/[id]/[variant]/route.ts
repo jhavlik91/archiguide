@@ -19,7 +19,7 @@ function isVariant(value: string): value is MediaVariant {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; variant: string }> },
 ): Promise<Response> {
   const { id, variant } = await params;
@@ -27,7 +27,10 @@ export async function GET(
     return new Response(null, { status: 404 });
   }
 
-  const servable = await resolveServableFile(id, variant);
+  // `?base=1`: vynutí základní derivát z originálu (editor T015 počítá úpravu vždy
+  // z originálu). Ignoruje se pro variantu `original`.
+  const base = new URL(request.url).searchParams.get("base") === "1";
+  const servable = await resolveServableFile(id, variant, { base });
   if (!servable) return new Response(null, { status: 404 });
 
   const data = await getStorage().get(servable.key);
