@@ -1,8 +1,10 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { buildTaxonomy } from "../../src/features/taxonomy/data";
 import { hashPassword } from "../../src/features/auth/password";
+import { BUILTIN_SCENARIOS } from "../../src/features/guide/scenarios";
+import { validateScenarioDefinition } from "../../src/features/guide/validation";
 
 // Seed infrastruktura. Doménové seedy se přidávají do `main`. Vše je idempotentní
 // (upsert dle slugu), aby `prisma db seed` šlo spustit opakovaně i v CI.
@@ -260,10 +262,68 @@ async function seedPortfolio() {
   console.log(`Demo portfolio: /projekt/${DEMO_PROJECT_SLUG} (publikováno).`);
 }
 
+/**
+ * Zabudované guide scénáře (T017). Každý scénář se před zápisem zvaliduje
+ * (validateScenarioDefinition) — vadná definice seed zastaví. Idempotentní dle
+ * (slug, verze); kroky se přepíšou. Zdrojem je registr `BUILTIN_SCENARIOS`.
+ * Datovou logiku zrcadlí `features/guide/service.ts#syncScenario` (server-only),
+ * tady je inline, aby seed neimportoval `server-only` modul (vzor jako portfolio).
+ */
+async function seedGuide() {
+  let stepCount = 0;
+  for (const def of BUILTIN_SCENARIOS) {
+    const errors = validateScenarioDefinition(def);
+    if (errors.length > 0) {
+      throw new Error(
+        `Neplatný guide scénář ${def.slug} v${def.version}:\n- ${errors.join("\n- ")}`,
+      );
+    }
+
+    const scenario = await prisma.guideScenario.upsert({
+      where: { slug_version: { slug: def.slug, version: def.version } },
+      update: {
+        name: def.name,
+        active: true,
+        conflicts: (def.conflicts ?? []) as unknown as Prisma.InputJsonValue,
+      },
+      create: {
+        slug: def.slug,
+        version: def.version,
+        name: def.name,
+        conflicts: (def.conflicts ?? []) as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    await prisma.guideStep.deleteMany({ where: { scenarioId: scenario.id } });
+    await prisma.guideStep.createMany({
+      data: def.steps.map((step, index) => ({
+        scenarioId: scenario.id,
+        key: step.key,
+        type: step.type,
+        position: index,
+        prompt: step.prompt,
+        help: step.help ?? null,
+        options: (step.options ?? []) as unknown as Prisma.InputJsonValue,
+        config: (step.config ?? {}) as unknown as Prisma.InputJsonValue,
+        condition:
+          step.condition === undefined
+            ? Prisma.JsonNull
+            : (step.condition as unknown as Prisma.InputJsonValue),
+        required: step.required ?? true,
+      })),
+    });
+    stepCount += def.steps.length;
+  }
+  console.log(
+    `Guide: ${BUILTIN_SCENARIOS.length} scénář(ů), ${stepCount} kroků.`,
+  );
+}
+
 async function main() {
   await seedTaxonomy();
   await seedDevUsers();
   await seedPortfolio();
+  await seedGuide();
   console.log("Seed dokončen.");
 }
 

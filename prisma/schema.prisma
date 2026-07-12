@@ -54,6 +54,7 @@ model User {
   portfolioProjects   PortfolioProject[] // T012 (owner = uživatel)
   portfolioCoauthors  PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
   mediaAssets         MediaAsset[] // T014 (owner = uživatel)
+  guideSessions       GuideSession[] // T017 (guide session připojená k účtu)
 
   @@map("users")
 }
@@ -752,4 +753,144 @@ model MediaAsset {
   @@index([ownerOrgId])
   @@index([contentHash])
   @@map("media_assets")
+}
+
+// ---------------------------------------------------------------------------
+// Guide — schema engine (T017)
+//
+// Datově řízený guide: otázky (kroky) jsou definované DATY, ne kódem. Scénář je
+// verzovaný — běžící session dokončí svou verzi i po vydání nové (session drží FK
+// na konkrétní `GuideScenario` řádek = konkrétní verzi). Podmíněné větvení popisuje
+// deklarativní JSON DSL v `GuideStep.condition`, vyhodnocované na serveru
+// (features/guide/conditions.ts). Rozpory hlídají pravidla v `GuideScenario.conflicts`.
+//
+// Session funguje i pro NEPŘIHLÁŠENÉHO: identifikuje ho neuhádnutelný `token`
+// (cookie). Po registraci/loginu se anonymní session připojí k účtu naplněním
+// `userId` (legacy-master-spec §54) — token zůstává kvůli doběhu.
+//
+// KLÍČOVÝ INVARIANT: „nevím" i „přeskočit" jsou VALIDNÍ odpovědi a nikdy neblokují
+// postup (zadani/16 §4). Odpověď na krok, který se po změně dřívější odpovědi
+// dostal na neplatnou větev, se NEMAŽE — jen se přestane počítat (engine ji hlásí
+// jako „stale"). Detaily enginu: features/guide/engine.ts.
+//
+// Mimo T017: UI (T018), obsah reálných scénářů (T019), shrnutí/warningy (T020),
+// admin editace scénářů (T035).
+// ---------------------------------------------------------------------------
+
+/// Typ otázky (kroku). Zrcadlí `GUIDE_STEP_TYPES` ve features/guide/types.ts.
+/// Každý typ má vlastní tvar hodnoty odpovědi i validaci.
+enum GuideStepType {
+  single_choice
+  multi_choice
+  text
+  number
+  range
+  location
+  file_ref
+}
+
+/// Životní cyklus session. `active` → `completed` (dokončeno) | `abandoned`
+/// (opuštěno). Terminální jsou `completed` i `abandoned`.
+enum GuideSessionState {
+  active
+  completed
+  abandoned
+}
+
+/// Verzovaný scénář guide. Jedinečný je pár (slug, verze); pro daný slug běží
+/// nová session na nejvyšší `active` verzi, rozběhnutá session dokončí svou.
+/// `conflicts` drží deklarativní pravidla rozporů (pole `{ key, message, when }`).
+model GuideScenario {
+  id      String  @id @default(cuid())
+  /// Stabilní identifikátor scénáře napříč verzemi (např. `co-chcete-vyresit`).
+  slug    String
+  /// Verze scénáře (monotónně roste). Nová verze = nový řádek se stejným slugem.
+  version Int     @default(1)
+  name    String
+  /// Smí se z tohoto scénáře zakládat nová session? Deaktivace neruší běžící session.
+  active  Boolean @default(true)
+
+  /// Deklarativní pravidla rozporů (JSON: `{ key, message, when: <DSL> }[]`).
+  /// Vyhodnocuje engine nad odpověďmi; UI (T020) je zpracuje jako varování.
+  conflicts Json @default("[]")
+
+  steps    GuideStep[]
+  sessions GuideSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([slug, version])
+  @@index([slug])
+  @@map("guide_scenarios")
+}
+
+/// Jeden krok (otázka) scénáře. Data, ne kód. Pořadí drží `position`; zobrazení
+/// řídí volitelná `condition` (JSON DSL nad dřívějšími odpověďmi).
+model GuideStep {
+  id         String        @id @default(cuid())
+  scenarioId String
+  scenario   GuideScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  /// Stabilní klíč kroku v rámci scénáře; klíčem se na krok odkazují podmínky
+  /// i uložené odpovědi (`GuideSession.answers`).
+  key      String
+  type     GuideStepType
+  /// Pořadí v rámci scénáře (0-based). Určuje i „dřívější/pozdější" pro podmínky.
+  position Int
+
+  /// Text otázky.
+  prompt String
+  /// Vysvětlivka nejasného pojmu (volitelná).
+  help   String?
+
+  /// Možnosti pro single/multi-choice (JSON: `{ value, label, help? }[]`).
+  options Json @default("[]")
+  /// Konfigurace typu (JSON: min/max u number/range, maxLength u textu, …).
+  config  Json @default("{}")
+  /// Podmínka zobrazení (JSON DSL). `null` = krok se zobrazí vždy.
+  condition Json?
+  /// Je odpověď (hodnotou) povinná pro „úplný brief"? „nevím"/„přeskočit" je vždy
+  /// přípustné a nezablokuje postup — povinnost jen značí chybějící podklad.
+  required Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([scenarioId, key])
+  @@index([scenarioId])
+  @@map("guide_steps")
+}
+
+/// Průchod scénářem. Vlastník je přihlášený uživatel (`userId`) NEBO anonym
+/// identifikovaný `token`em z cookie; anonymní session se po registraci připojí
+/// naplněním `userId`. `answers` je mapa `klíč kroku → odpověď` (JSON).
+model GuideSession {
+  id         String        @id @default(cuid())
+  scenarioId String
+  scenario   GuideScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  /// Vlastník po přihlášení. `null` u anonymní session (identifikuje ji `token`).
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Neuhádnutelný token session (cookie). Vlastnictví anonymní session = držení
+  /// tokenu; zůstává i po připojení k účtu.
+  token String @unique
+
+  /// Uložené odpovědi: `{ [stepKey]: { status, value? } }` (JSON).
+  answers Json @default("{}")
+
+  state GuideSessionState @default(active)
+
+  startedAt   DateTime  @default(now())
+  /// Kdy session přešla do terminálního stavu (`completed`/`abandoned`).
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([scenarioId])
+  @@map("guide_sessions")
 }
