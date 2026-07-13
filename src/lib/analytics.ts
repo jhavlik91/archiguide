@@ -50,7 +50,10 @@ export type AnalyticsEvent =
   | "guide.safety_warning_shown"
   // Attachment systém (T023)
   | "attachment.uploaded"
-  | "attachment.visibility_changed";
+  | "attachment.visibility_changed"
+  // Messaging — core (T030)
+  | "messaging.conversation_started"
+  | "messaging.message_sent";
 
 export function trackEvent(
   event: AnalyticsEvent,
