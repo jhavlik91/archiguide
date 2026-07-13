@@ -72,6 +72,29 @@ vlastní přístupovou logiku**.
 Storage adaptér je stejný jako u médií: `ATTACHMENT_STORAGE_DRIVER`
 (`filesystem` výchozí | `s3`), `ATTACHMENT_STORAGE_DIR` — viz `.env.example`.
 
+## Zprávy (T030)
+
+Konverzace 1:1 mezi přihlášenými uživateli, textové zprávy, stav přečtení a inbox
+(`/messages`). Číst i psát smí **výhradně účastníci** konverzace — rozhodnutí jde
+přes permission vrstvu (`messaging.access_conversation` / `send_message`), žádný
+jiný uživatel ani role konverzaci neotevře (cizí → 404, nepotvrzujeme existenci).
+
+- **Kontext vzniku je polymorfní** (`contextType` + `contextId`, bez FK) —
+  konverzace vzniká z poptávky/reakce/profilu, nebo napřímo. Znovupoužití hlídá
+  deterministický `dedupeKey` (kontext + seřazená ID účastníků): **stejná dvojice
+  ve stejném kontextu nikdy nezaloží druhou konverzaci**.
+- **Odeslání je idempotentní** přes `clientToken` (double-click nevytvoří
+  duplikát) a **nikdy falešně nehlásí úspěch** — při selhání zůstane rozepsaný
+  text v poli k opětovnému odeslání (optimistické UI s potvrzením uložení).
+- **Stav přečtení** je per-účastník (`lastReadAt`) → nepřečtené počítadlo v
+  inboxu; **archivace** je také per-účastník. Nové zprávy chodí pollingem
+  (revalidace, bez websocketů v MVP).
+- **Bezpečnost obsahu:** zprávy se renderují vždy jako **text, nikdy HTML** (XSS).
+  Zrušený účet zůstává v historii jako placeholder „Zrušený účet"; vůči
+  zrušené/deaktivované protistraně je odeslání zablokované s vysvětlením.
+
+Přílohy, block/report a ochranu kontaktů řeší T031; notifikace T032/T033.
+
 ## Požadavky
 
 - Node.js ≥ 20

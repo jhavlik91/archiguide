@@ -57,6 +57,8 @@ model User {
   guideSessions       GuideSession[] // T017 (guide session připojená k účtu)
   attachments         Attachment[] // T023 (owner = uživatel)
   briefs              Brief[] // T021 (owner = uživatel)
+  conversations       ConversationParticipant[] // T030 (účast v konverzacích)
+  sentMessages        Message[] // T030 (odeslané zprávy)
 
   @@map("users")
 }
@@ -1106,4 +1108,112 @@ model Brief {
   @@index([ownerUserId])
   @@index([guideSessionId])
   @@map("briefs")
+}
+
+// ---------------------------------------------------------------------------
+// Messaging (T030)
+//
+// Konverzace 1:1 mezi přihlášenými uživateli, textové zprávy, stav přečtení,
+// inbox. Kontext vzniku je polymorfní (`contextType` + `contextId`, bez FK na
+// cizí model — stejně jako u příloh) — konverzace vzniká z poptávky/reakce/
+// profilu, nebo napřímo. Přílohy, block/report, ochrana kontaktů a skupinové
+// konverzace jsou mimo scope (T031 / finální produkt).
+// ---------------------------------------------------------------------------
+
+/// Moderační stav zprávy. `visible` (default) → `hidden` (skryje T036 přes
+/// report); obsah se nemaže, jen se přestane zobrazovat účastníkům.
+enum MessageModerationState {
+  visible
+  hidden
+}
+
+/// Konverzace více účastníků (v MVP vždy 1:1). Znovupoužití stejné dvojice ve
+/// stejném kontextu hlídá unikátní `dedupeKey` (deterministický z kontextu a
+/// seřazených ID účastníků) → nikdy nevzniknou dvě konverzace téže dvojice ve
+/// stejném kontextu. `lastMessageAt` řadí inbox bez agregace přes zprávy.
+model Conversation {
+  id String @id @default(cuid())
+
+  /// Polymorfní kontext vzniku (`request`, `response`, `profile`, …) nebo NULL
+  /// pro přímou konverzaci. Bez FK na cizí model (vazbu zná zdrojová doména).
+  contextType String?
+  contextId   String?
+
+  /// Deterministický klíč pro znovupoužití:
+  /// `<contextType|direct>:<contextId>:<seřazená userId účastníků>`. Unikátní →
+  /// findOrCreate je idempotentní i při souběhu (race → jeden řádek vyhraje).
+  dedupeKey String @unique
+
+  /// Čas poslední zprávy (řazení inboxu). NULL = konverzace zatím bez zpráv
+  /// (může vzniknout prázdná při zahájení z kontextu).
+  lastMessageAt DateTime?
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([contextType, contextId])
+  @@map("conversations")
+}
+
+/// Účast uživatele v konverzaci. Nese per-účastník stav: `lastReadAt` (výpočet
+/// nepřečtených) a `archivedAt` (archivace je individuální — druhý účastník
+/// konverzaci dál vidí aktivní).
+model ConversationParticipant {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Do kdy má účastník přečteno. Zpráva novější než tento čas (a ne od něj) je
+  /// pro účastníka nepřečtená. NULL = ještě si konverzaci neotevřel.
+  lastReadAt DateTime?
+  /// Archivováno tímto účastníkem (per-účastník). NULL = aktivní v inboxu.
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+/// Textová zpráva v konverzaci. Obsah se renderuje VŽDY jako text (XSS: nikdy
+/// HTML). `clientToken` je idempotenční klíč odeslání z klienta (double-click
+/// nevytvoří duplikát). `replyToId` je volitelná odpověď na konkrétní zprávu.
+model Message {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  /// Odesílatel. Při zrušení účtu (soft delete → status=deleted) zpráva zůstává
+  /// a UI vykreslí placeholder identitu „zrušený účet" (zadani/09 — Messaging).
+  senderUserId String
+  sender       User   @relation(fields: [senderUserId], references: [id], onDelete: Cascade)
+
+  content String
+
+  /// Odpověď na konkrétní zprávu (reply reference). Self-relace, volitelná;
+  /// smazání cílové zprávy odkaz vynuluje (SetNull), vlákno se nerozbije.
+  replyToId String?
+  replyTo   Message?  @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReply")
+
+  /// Idempotenční klíč odeslání z klienta (UUID). Unikátní v rámci konverzace →
+  /// opakované odeslání téhož tokenu vrátí existující zprávu místo duplikátu.
+  clientToken String
+
+  moderationState MessageModerationState @default(visible)
+
+  createdAt DateTime @default(now())
+
+  @@unique([conversationId, clientToken])
+  @@index([conversationId, createdAt])
+  @@map("messages")
 }

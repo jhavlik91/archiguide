@@ -54,7 +54,10 @@ export type AnalyticsEvent =
   // Brief — generování z guide (T021)
   | "brief.created"
   | "brief.regenerated"
-  | "brief.ready";
+  | "brief.ready"
+  // Messaging — core (T030)
+  | "messaging.conversation_started"
+  | "messaging.message_sent";
 
 export function trackEvent(
   event: AnalyticsEvent,

@@ -1,6 +1,6 @@
 # T030 — Messaging — core
 
-**Track:** G (komunikace) | **Závislosti:** T004 | **Assignee:** —
+**Track:** G (komunikace) | **Závislosti:** T004 | **Assignee:** Claude
 
 ## Goal
 Základ zpráv: konverzace 1:1 (klient–profesionál), odesílání textových zpráv, stav přečtení, inbox. Viz `zadani/legacy-master-spec.md` §27, `zadani/15-release-roadmap.md` Package 7.
@@ -39,11 +39,11 @@ Conversation: `active → archived` (per účastník); Message moderation state:
 Eventy: `conversation_started`, `message_sent` (bez obsahu zpráv).
 
 ## Acceptance criteria
-- [ ] E2E: uživatel A napíše B → B vidí konverzaci v inboxu s nepřečteným počítadlem → odpoví → A vidí odpověď.
-- [ ] Cizí uživatel (ani jiný přihlášený) konverzaci neotevře (403/404).
-- [ ] Selhání odeslání nezahodí rozepsaný text a nehlásí úspěch.
-- [ ] Stejný kontext nevytvoří druhou konverzaci stejných účastníků.
-- [ ] Obsah zprávy s HTML se zobrazí jako text.
+- [x] E2E: uživatel A napíše B → B vidí konverzaci v inboxu s nepřečteným počítadlem → odpoví → A vidí odpověď.
+- [x] Cizí uživatel (ani jiný přihlášený) konverzaci neotevře (403/404).
+- [x] Selhání odeslání nezahodí rozepsaný text a nehlásí úspěch.
+- [x] Stejný kontext nevytvoří druhou konverzaci stejných účastníků.
+- [x] Obsah zprávy s HTML se zobrazí jako text.
 
 ## Out of scope
 Přílohy, block/report, ochrana kontaktů (T031), skupinové/projektové konverzace (finální produkt), notifikace (T032/T033), real-time push, vyhledávání ve zprávách.
