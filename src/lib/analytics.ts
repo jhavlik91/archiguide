@@ -50,7 +50,11 @@ export type AnalyticsEvent =
   | "guide.safety_warning_shown"
   // Attachment systém (T023)
   | "attachment.uploaded"
-  | "attachment.visibility_changed";
+  | "attachment.visibility_changed"
+  // Brief — generování z guide (T021)
+  | "brief.created"
+  | "brief.regenerated"
+  | "brief.ready";
 
 export function trackEvent(
   event: AnalyticsEvent,
