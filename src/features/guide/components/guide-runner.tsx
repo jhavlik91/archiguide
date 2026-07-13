@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  ArrowRight,
   ChevronLeft,
   CircleCheckBig,
   FileText,
@@ -14,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
+import { createBriefFromGuide } from "@/features/brief/actions";
 import { recordGuideSummaryView, submitGuideAnswer } from "../actions";
 import type { GuideSessionView } from "../service";
 import type { GuideAnswer, GuideAnswerValue } from "../types";
@@ -352,18 +354,31 @@ function GuideCompletion({
         </Card>
       )}
 
-      {/* Další krok: brief (T021 — slot) a uložení na později. */}
+      {/* Další krok: vygenerovat projektový brief (T021). */}
       <Card className="border-primary/40">
         <CardContent className="space-y-3 p-5 sm:p-6">
           <h2 className="flex items-center gap-2 font-semibold">
             <FileText className="text-primary size-5" />
-            Připravit poptávku
+            Vytvořit projektový brief
           </h2>
           <p className="text-muted-foreground text-sm">
-            Ze shrnutí vytvoříme poptávku, kterou pošlete vybraným
-            profesionálům. Tato část se právě dokončuje.
+            Ze shrnutí sestavíme strukturovaný brief se všemi podklady — základ
+            pro poptávku, kterou později pošlete vybraným profesionálům.
           </p>
-          <Button disabled>Pokračovat na poptávku (brzy)</Button>
+          {/* Server akce přesměruje na náhled briefu; nepřihlášeného nejprve na
+              registraci (matice „Vytvořit brief" = C). Funguje i bez JS. */}
+          <form action={createBriefFromGuide.bind(null, view.id)}>
+            <Button type="submit">
+              Vytvořit brief
+              <ArrowRight />
+            </Button>
+          </form>
+          {anonymous ? (
+            <p className="text-muted-foreground text-xs">
+              Před vytvořením briefu vás vyzveme k rychlé registraci — váš záměr
+              se pak připojí k účtu a nic nezmizí.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 

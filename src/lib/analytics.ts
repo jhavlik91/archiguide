@@ -51,6 +51,10 @@ export type AnalyticsEvent =
   // Attachment systém (T023)
   | "attachment.uploaded"
   | "attachment.visibility_changed"
+  // Brief — generování z guide (T021)
+  | "brief.created"
+  | "brief.regenerated"
+  | "brief.ready"
   // Messaging — core (T030)
   | "messaging.conversation_started"
   | "messaging.message_sent";
