@@ -124,6 +124,34 @@ jiný uživatel ani role konverzaci neotevře (cizí → 404, nepotvrzujeme exis
 
 Přílohy, block/report a ochranu kontaktů řeší T031; notifikace T032/T033.
 
+## Poptávky (T024)
+
+Jádro marketplace: poptávka (`Request`) navázaná na projektový brief, s CRUD a
+kompletním **stavovým automatem**. Poptávka vzniká **vždy z briefu** (guide je
+kritická cesta) předvyplněná z jeho obsahu; jeden brief může mít víc poptávek
+(jiné profese). Přehled vlastníka je na `/requests`, detail a řízení na
+`/requests/[id]`.
+
+- **Stavový automat** (`draft → active → in_discussion → awarded → closed`,
+  `active → paused → active`, `active → cancelled|expired`,
+  `in_discussion|paused → cancelled`) je **jediným** způsobem změny stavu —
+  `features/requests/state-machine.ts` je zdroj pravdy, **neplatný přechod server
+  odmítne**. Přechody běží jako server akce s kontrolou oprávnění.
+- **Publikace dle permission matice** (`zadani/05` — „Publikovat B2C/B2B
+  poptávku"): návštěvník nikdy, účet pouze s rolí moderátor nikdy; jinak vlastník
+  (admin cokoliv). CRUD a ostatní přechody smí jen vlastník nebo admin.
+- **Snapshot briefu při publikaci** (`briefSnapshot`): pozdější změna briefu už
+  publikovanou poptávku neovlivní (zadani/09 — Request). Po publikaci je možné jen
+  **upřesnění** (rozpočet/termín/čas), ne změna smyslu — s viditelnou poznámkou
+  „upraveno".
+- **Expirace**: `active` poptávka s prošlým termínem přejde do `expired` (kontrola
+  při čtení + hromadná funkce `expireDueRequests` pro denní job) a nepřijímá
+  reakce.
+- **Audit** významných přechodů (publish/pause/resume/cancel/award/close/expire)
+  je append-only (`RequestAuditEntry`) s aktérem a `from→to` stavem.
+- **Viditelnost** je zatím jen pole (`private` default) — anonymizaci a veřejný
+  výpis řeší T025/T026; reakce T027, matching T028.
+
 ## Notifikace (T032)
 
 Doménový event systém a in-app notifikace. Domény (messaging, marketplace,

@@ -39,11 +39,11 @@ Klient smaže účet během aktivní poptávky → poptávka `cancelled`, reakce
 Eventy: `request_created`, `request_published`, stavové přechody (`request_paused`, `request_cancelled`, `request_closed`).
 
 ## Acceptance criteria
-- [ ] Unit testy stavového automatu: všechny povolené přechody projdou, neplatné server odmítne.
-- [ ] E2E: brief → vytvoření poptávky → publikace → pauza → obnovení.
-- [ ] Publikace vyžaduje oprávnění dle role; návštěvník nikdy.
-- [ ] Expirovaná poptávka přejde do `expired` a nepřijímá reakce.
-- [ ] Auditní log obsahuje publish/pause/cancel/award/close.
+- [x] Unit testy stavového automatu: všechny povolené přechody projdou, neplatné server odmítne.
+- [x] E2E: brief → vytvoření poptávky → publikace → pauza → obnovení.
+- [x] Publikace vyžaduje oprávnění dle role; návštěvník nikdy.
+- [x] Expirovaná poptávka přejde do `expired` a nepřijímá reakce.
+- [x] Auditní log obsahuje publish/pause/cancel/award/close.
 
 ## Out of scope
 Viditelnost + anonymizace (T025), veřejný výpis (T026), reakce (T027), matching (T028), typy poptávek mimo B2C/B2B (invite-only, urgentní, subdodavatelské, pracovní — finální produkt).
