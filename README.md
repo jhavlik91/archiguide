@@ -95,6 +95,33 @@ jiný uživatel ani role konverzaci neotevře (cizí → 404, nepotvrzujeme exis
 
 Přílohy, block/report a ochranu kontaktů řeší T031; notifikace T032/T033.
 
+## Vyhledávání profesionálů (T034)
+
+Veřejný katalog a fulltextové vyhledávání profesionálů na `/profesionalove` —
+bez externího enginu, přes Postgres `tsvector`. Hledá se v headline, biu,
+specializacích, názvech profesí i názvech **publikovaných** portfolio projektů.
+
+- **Diakritika nerozhoduje** — `unaccent` na obou stranách, takže „zámečník"
+  i „zamecnik" vrací stejné výsledky. Dotaz je prefixový (`slovo:*`) a bezpečně
+  escapovaný: z uživatelského vstupu se berou jen alfanumerické tokeny, žádný
+  `to_tsquery` operátor se z něj neprovede.
+- **Synonyma profesí** z taxonomie (T005): „projektant" najde i profil s profesí
+  „projektant pozemních staveb", i když ji nemá doslovně v textu.
+- **Filtry** (profese, region/lokalita, specializace, ověřený účet) a **řazení**
+  (relevance / nejnovější) jsou **URL-persistované** — sdílitelné a SEO
+  indexovatelné; stránkuje se kurzorem (keyset, stabilní tie-break přes `id`).
+  Neznámý slug profese se ignoruje (nezmrazí výsledky).
+- **Jen veřejné, publikované profily** aktivních uživatelů. Draft/deaktivovaný se
+  ve výsledcích nikdy neobjeví; karta nenese žádná privátní pole (adresa,
+  kontakty) a ověření uvádí přesně (badge „Ověřený telefon", ne paušální
+  „Verified"). Odpublikování profilu ho z výsledků odstraní **okamžitě** —
+  dokument se skládá za běhu z živého stavu (bez materializovaného indexu;
+  ten je připravená cesta pro škálování, viz `features/search/service.ts`).
+- **Prázdný výsledek** nekončí ve slepé uličce — nabídne konkrétní kroky
+  (rozšířit region, odebrat filtr, zkusit příbuznou profesi, zobrazit vše).
+
+Migrace T034 přidává jen rozšíření `unaccent`; nemění cizí tabulky (T007/T012).
+
 ## Požadavky
 
 - Node.js ≥ 20
