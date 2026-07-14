@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { trackEvent } from "@/lib/analytics";
+import { emit } from "@/lib/notifications";
 import { getActor } from "@/lib/session";
 // Import zároveň registruje oprávnění messagingu (access/send/start).
 import {
@@ -68,6 +69,36 @@ const NOT_FOUND = {
 };
 
 /**
+ * Vyrozumí ostatní účastníky o nové zprávě (T032). Emituje se přes jednotné API
+ * (`@/lib/notifications`), je best-effort (nikdy neshodí odeslání) a NIKDY nenese
+ * obsah zprávy — jen „nová zpráva" + odkaz do konverzace (T032 § Permissions).
+ * Deduplikace přes klíč konverzace: rychlá série zpráv = 1 nepřečtená notifikace
+ * s počtem. Odesílatel (původce akce) notifikaci nedostane.
+ */
+async function notifyNewMessage(
+  conversationId: string,
+  senderUserId: string,
+  participantUserIds: readonly string[],
+): Promise<void> {
+  const recipients = participantUserIds.filter((id) => id !== senderUserId);
+  await Promise.all(
+    recipients.map((recipientUserId) =>
+      emit({
+        eventType: "new_message",
+        recipientUserId,
+        actorUserId: senderUserId,
+        title: "Nová zpráva",
+        reason: "Dostáváte upozornění na nové zprávy ve vaší konverzaci.",
+        link: `/messages/${conversationId}`,
+        // Dedup klíč se odvodí z kontextu (`new_message:conversation:<id>`) —
+        // explicitní klíč by se s odvozeným rozešel u dalších emitentů události.
+        context: { type: "conversation", id: conversationId },
+      }),
+    ),
+  );
+}
+
+/**
  * Odešle zprávu do existující konverzace. Idempotentní přes `clientToken`
  * (double-click nevytvoří duplikát). Odeslání vůči zrušené/deaktivované
  * protistraně se odmítne s vysvětlením (`blocked`), historie zůstává čitelná.
@@ -131,6 +162,7 @@ export async function sendMessage(input: unknown): Promise<SendResult> {
         conversationId: conv.id,
         messageId: message.id,
       });
+      await notifyNewMessage(conv.id, actor.userId, participantUserIds);
     }
 
     return { ok: true, message: toMessageView(message, actor.userId, facts) };
@@ -207,6 +239,10 @@ export async function startConversation(input: unknown): Promise<StartResult> {
         trackEvent("messaging.message_sent", {
           conversationId: conversation.id,
         });
+        await notifyNewMessage(conversation.id, actor.userId, [
+          actor.userId,
+          recipientId,
+        ]);
       }
     }
 

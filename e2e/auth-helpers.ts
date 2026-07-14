@@ -30,7 +30,15 @@ export async function registerViaUi(
   await page.goto("/register");
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Heslo").fill(password);
-  await page.getByRole("checkbox").click();
+  // Radix checkbox reaguje až po hydrataci Reactu — klik před ní se ztratí a
+  // server pak registraci odmítne (nesouhlas s podmínkami). Klikáme proto,
+  // dokud není checkbox skutečně zaškrtnutý; tím je zaručeno i to, že následný
+  // submit odchází až po hydrataci.
+  const terms = page.getByRole("checkbox");
+  await expect(async () => {
+    if (!(await terms.isChecked())) await terms.click();
+    await expect(terms).toBeChecked({ timeout: 1_000 });
+  }).toPass();
   await page.getByRole("button", { name: "Vytvořit účet" }).click();
   await page.waitForURL("**/dashboard");
 }

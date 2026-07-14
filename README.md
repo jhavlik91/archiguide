@@ -152,6 +152,32 @@ kritická cesta) předvyplněná z jeho obsahu; jeden brief může mít víc pop
 - **Viditelnost** je zatím jen pole (`private` default) — anonymizaci a veřejný
   výpis řeší T025/T026; reakce T027, matching T028.
 
+## Notifikace (T032)
+
+Doménový event systém a in-app notifikace. Domény (messaging, marketplace,
+matching, verifikace…) hlásí události **výhradně jedním vstupním bodem**
+`@/lib/notifications` — `emit(eventType, recipient, context)` — a **nepíšou
+vlastní logiku doručování**. Katalog událostí (`EVENT_CATALOG`) je otevřený enum:
+nový typ = jen záznam v kódu, DB drží prostý string (bez migrace, bez hardcode na
+jednu doménu).
+
+- **Emit je best-effort:** selhání notifikace nikdy neshodí primární akci
+  (odeslání zprávy apod.). **Vlastní akce nenotifikuje** (`actorUserId ===
+  recipient` → skip). Neznámý typ, zrušený příjemce i vypnutý kanál se tiše přeskočí.
+- **Deduplikace:** dokud je notifikace **nepřečtená**, opakovaný emit se stejným
+  `dedupeKey` jen zvýší počet a vrátí ji nahoru (5 zpráv v konverzaci = **1**
+  nepřečtená notifikace s počtem ×5). Po přečtení vznikne nová.
+- **Kanály & preference:** default kanálová politika z katalogu (zadani/11);
+  respektuje uložené `User.notificationPreferences` (preferenční UI je T033). V MVP
+  se materializuje jen **in-app** (e-mail/SMS/push mimo rozsah).
+- **Centrum:** zvoneček v hlavičce (počet nepřečtených + posledních N) a stránka
+  `/notifications`. Každá notifikace nese **důvod** (proč ji divák dostal) a
+  **odkaz do kontextu**; klik ji zároveň označí přečtenou. Označit lze jednotlivě
+  i vše najednou.
+- **Bezpečnost:** uživatel vidí a spravuje **jen své** notifikace
+  (`notifications.access_own`, cizí nedostupné). Notifikace **neprozrazuje obsah**,
+  na který příjemce nemá právo (jen „nová zpráva", ne text).
+
 ## Vyhledávání profesionálů (T034)
 
 Veřejný katalog a fulltextové vyhledávání profesionálů na `/profesionalove` —

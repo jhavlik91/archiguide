@@ -64,6 +64,9 @@ export type AnalyticsEvent =
   // Messaging — core (T030)
   | "messaging.conversation_started"
   | "messaging.message_sent"
+  // Notifikace — event systém + in-app (T032)
+  | "notification.created"
+  | "notification.opened"
   // Vyhledávání profesionálů (T034)
   | "search_performed"
   | "search_result_clicked"
