@@ -18,7 +18,12 @@ import {
   transitionRequest,
   updateDraftRequest,
 } from "./service";
-import { requestInputSchema, type RequestInput } from "./validation";
+import {
+  requestInputSchema,
+  requestRefineSchema,
+  type RequestInput,
+  type RequestRefineInput,
+} from "./validation";
 import type { RequestAction } from "./state-machine";
 
 /**
@@ -102,7 +107,7 @@ export async function updateDraftRequestAction(
 /** Upřesní publikovanou poptávku (rozpočet/termín/časový horizont). Vlastník/admin. */
 export async function refineRequestAction(
   requestId: string,
-  patch: { budget: string; timeline: string; deadline: string },
+  patch: RequestRefineInput,
 ): Promise<RequestActionResult> {
   const actor = await getActor();
   const current = await getRequestById(requestId);
@@ -111,20 +116,15 @@ export async function refineRequestAction(
     return { ok: false, error: "K této poptávce nemáte přístup." };
   }
 
-  const norm = (v: string) => {
-    const t = v.trim();
-    return t.length === 0 ? null : t;
-  };
-  const deadline = norm(patch.deadline);
-  if (deadline !== null && Number.isNaN(Date.parse(deadline))) {
-    return { ok: false, error: "Neplatné datum termínu." };
+  const parsed = requestRefineSchema.safeParse(patch);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Neplatné údaje poptávky.",
+    };
   }
 
-  const result = await refinePublishedRequest(requestId, {
-    budget: norm(patch.budget),
-    timeline: norm(patch.timeline),
-    deadline,
-  });
+  const result = await refinePublishedRequest(requestId, parsed.data);
   if (!result.ok) {
     return {
       ok: false,

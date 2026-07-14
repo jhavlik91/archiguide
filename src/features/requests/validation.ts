@@ -59,3 +59,17 @@ export const requestInputSchema = z.object({
 
 export type RequestInput = z.input<typeof requestInputSchema>;
 export type ParsedRequestInput = z.output<typeof requestInputSchema>;
+
+/**
+ * Upřesnění PUBLIKOVANÉ poptávky (§ Main flow — rozpočet, horizont, termín).
+ * Podmnožina `requestInputSchema` nad TÝMIŽ poli: obě cesty píšou do stejných
+ * sloupců, takže musí platit i stejné limity délky a stejná kontrola data.
+ */
+export const requestRefineSchema = requestInputSchema.pick({
+  budget: true,
+  timeline: true,
+  deadline: true,
+});
+
+export type RequestRefineInput = z.input<typeof requestRefineSchema>;
+export type ParsedRequestRefineInput = z.output<typeof requestRefineSchema>;
