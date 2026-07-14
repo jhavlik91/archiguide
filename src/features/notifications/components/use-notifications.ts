@@ -3,17 +3,15 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { type NotificationView } from "../types";
-import {
-  markAllNotificationsRead,
-  markNotificationRead,
-} from "../actions";
+import { markAllNotificationsRead } from "../actions";
 
 /**
  * Sdílená klientská logika notifikačního centra (T032) pro zvoneček i stránku.
  * Drží lokální (optimistický) stav položek a počtu nepřečtených, který se
- * synchronizuje s čerstvými serverovými daty. „Otevření" notifikace ji rovnou
- * označí přečtenou (klik vede do kontextu i mění stav) — server je zdroj pravdy,
- * `router.refresh()` po akci srovná layout (badge na zvonečku).
+ * synchronizuje s čerstvými serverovými daty. Otevření jednotlivé notifikace řeší
+ * server route `/notifications/[id]` (mark-read + přesměrování), takže tady stačí
+ * hromadné „označit vše přečtené"; server je zdroj pravdy a `router.refresh()`
+ * srovná layout (badge na zvonečku).
  */
 export function useNotifications(
   initialItems: NotificationView[],
@@ -30,21 +28,6 @@ export function useNotifications(
     setUnreadCount(initialUnread);
   }, [initialItems, initialUnread]);
 
-  /** Označí notifikaci přečtenou (optimisticky) a potvrdí na serveru. */
-  function open(id: string) {
-    setItems((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, unread: false } : n)),
-    );
-    setUnreadCount((prev) => {
-      const wasUnread = items.find((n) => n.id === id)?.unread;
-      return wasUnread ? Math.max(0, prev - 1) : prev;
-    });
-    startTransition(async () => {
-      await markNotificationRead({ id });
-      router.refresh();
-    });
-  }
-
   /** Označí všechny nepřečtené jako přečtené (optimisticky) a potvrdí na serveru. */
   function markAll() {
     setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -55,5 +38,5 @@ export function useNotifications(
     });
   }
 
-  return { items, unreadCount, open, markAll };
+  return { items, unreadCount, markAll };
 }

@@ -17,7 +17,7 @@ import { NotificationRow } from "./notification-row";
  * (`getNotificationCentre`) a po akcích se srovnají přes `router.refresh()`.
  */
 export function NotificationBell({ initial }: { initial: NotificationCentre }) {
-  const { items, unreadCount, open, markAll } = useNotifications(
+  const { items, unreadCount, markAll } = useNotifications(
     initial.items,
     initial.unreadCount,
   );
@@ -51,9 +51,7 @@ export function NotificationBell({ initial }: { initial: NotificationCentre }) {
         aria-haspopup="menu"
         aria-expanded={expanded}
         aria-label={
-          unreadCount > 0
-            ? `Notifikace: ${unreadCount} nepřečtených`
-            : "Notifikace"
+          unreadCount > 0 ? `Notifikace: ${unreadCount} nových` : "Notifikace"
         }
         onClick={() => setExpanded((v) => !v)}
       >
@@ -99,10 +97,7 @@ export function NotificationBell({ initial }: { initial: NotificationCentre }) {
                 <NotificationRow
                   key={n.id}
                   notification={n}
-                  onOpen={(id) => {
-                    open(id);
-                    setExpanded(false);
-                  }}
+                  onNavigate={() => setExpanded(false)}
                 />
               ))
             )}

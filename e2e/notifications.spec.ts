@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { loginAndWait, registerViaUi, uniqueEmail } from "./auth-helpers";
 import {
+  getNotificationIdFor,
   getUserIdByEmail,
   listNotificationsFor,
   seedConversation,
@@ -80,7 +81,7 @@ test.describe("Notifikace (T032)", () => {
     await loginAndWait(page, emailB, PASSWORD);
     await expect(bell(page)).toHaveAttribute(
       "aria-label",
-      "Notifikace: 1 nepřečtených",
+      "Notifikace: 1 nových",
     );
 
     // Rozbalí centrum a klikne na notifikaci → vede do konverzace.
@@ -118,6 +119,12 @@ test.describe("Notifikace (T032)", () => {
     await page.goto(`/messages/${convId}`);
     await sendMessage(page, "Zpráva pro B");
 
+    // Vznikla notifikace pro B — zjistíme její ID přímo z DB pro test přístupu.
+    await expect
+      .poll(async () => (await listNotificationsFor(bId)).length)
+      .toBe(1);
+    const bNotifId = (await getNotificationIdFor(bId))!;
+
     // C je nezúčastněný uživatel → žádné notifikace, prázdné centrum.
     await logout(page);
     await registerViaUi(page, emailC, PASSWORD);
@@ -129,6 +136,9 @@ test.describe("Notifikace (T032)", () => {
     await expect(
       page.getByRole("button", { name: "Notifikace", exact: true }),
     ).toBeVisible();
-    void bId;
+
+    // C nesmí otevřít cizí notifikaci přes go-route → 404 (nepotvrzujeme existenci).
+    const res = await page.goto(`/notifications/${bNotifId}`);
+    expect(res?.status()).toBe(404);
   });
 });

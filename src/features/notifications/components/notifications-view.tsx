@@ -18,10 +18,7 @@ export function NotificationsView({
   initial: NotificationView[];
 }) {
   const initialUnread = initial.filter((n) => n.unread).length;
-  const { items, unreadCount, open, markAll } = useNotifications(
-    initial,
-    initialUnread,
-  );
+  const { items, unreadCount, markAll } = useNotifications(initial, initialUnread);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -45,7 +42,7 @@ export function NotificationsView({
         <ul className="divide-border bg-card divide-y overflow-hidden rounded-lg border">
           {items.map((n) => (
             <li key={n.id}>
-              <NotificationRow notification={n} onOpen={open} />
+              <NotificationRow notification={n} />
             </li>
           ))}
         </ul>

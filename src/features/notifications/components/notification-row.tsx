@@ -6,25 +6,27 @@ import { type NotificationView } from "../types";
 import { formatRelative } from "./format";
 
 /**
- * Jedna položka notifikačního centra (T032). Odkaz vede přímo do kontextu
- * (`href`) a klik ji zároveň označí přečtenou (`onOpen`) — necháváme nativní
- * navigaci (funguje i otevření v novém panelu; přečtení jen bez JS neproběhne).
- * Zobrazuje důvod (proč ji divák dostal) a případný počet sloučených událostí.
+ * Jedna položka notifikačního centra (T032). Odkazuje na server route
+ * `/notifications/[id]`, která notifikaci označí přečtenou a přesměruje do
+ * kontextu (`linkPath`) — jednou navigací, bez klientské akce závodící s
+ * přesměrováním (to dřív přerušovalo request a shazovalo dev server).
+ * `prefetch={false}` je nutné: prefetch odkazu by mark-read spustil předčasně.
+ * Zobrazuje důvod (proč ji divák dostal) a počet sloučených událostí.
  */
 export function NotificationRow({
   notification,
-  onOpen,
+  onNavigate,
 }: {
   notification: NotificationView;
-  onOpen: (id: string) => void;
+  onNavigate?: () => void;
 }) {
   const n = notification;
   const urgent = n.priority === "urgent" || n.priority === "high";
   return (
     <Link
-      href={n.href}
+      href={`/notifications/${n.id}`}
       prefetch={false}
-      onClick={() => onOpen(n.id)}
+      onClick={onNavigate}
       className={cn(
         "hover:bg-muted/50 flex gap-3 px-4 py-3 transition-colors",
         n.unread && "bg-primary/5",

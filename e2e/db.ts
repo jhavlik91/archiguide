@@ -108,3 +108,15 @@ export async function listNotificationsFor(recipientUserId: string): Promise<
     select: { title: true, dedupeKey: true, count: true, state: true },
   });
 }
+
+/** ID nejnovější notifikace příjemce (pro test přístupu k cizí notifikaci). */
+export async function getNotificationIdFor(
+  recipientUserId: string,
+): Promise<string | null> {
+  const row = await db.notification.findFirst({
+    where: { recipientUserId },
+    orderBy: { lastEventAt: "desc" },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
