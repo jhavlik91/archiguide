@@ -57,7 +57,11 @@ export type AnalyticsEvent =
   | "brief.ready"
   // Messaging — core (T030)
   | "messaging.conversation_started"
-  | "messaging.message_sent";
+  | "messaging.message_sent"
+  // Vyhledávání profesionálů (T034)
+  | "search_performed"
+  | "search_result_clicked"
+  | "search_empty";
 
 export function trackEvent(
   event: AnalyticsEvent,
