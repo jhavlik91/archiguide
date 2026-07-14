@@ -4,6 +4,7 @@ import {
   validateUploadBytes,
 } from "@/features/attachments/validation";
 import {
+  maxAttachmentBytes,
   tooLargeMessage,
   unsupportedTypeMessage,
 } from "@/features/attachments/types";
@@ -72,6 +73,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Validace VŠECH příloh předem — kterákoli chyba znamená „nic neukládáme".
   const prepared: PreparedAttachment[] = [];
   for (const file of files) {
+    // Velikost zkontroluj z hlavičky DŘÍV, než soubor zhmotníš do paměti:
+    // `validateUploadBytes` limit hlídá taky, ale to už by 10 × N GB leželo v
+    // haldě. `file.size` je jen deklarace klienta, takže limit níž stejně platí —
+    // tohle je jen levné odmítnutí zjevně přerostlého souboru.
+    if (file.size > maxAttachmentBytes()) {
+      return NextResponse.json(
+        { error: "too_large", message: tooLargeMessage(file.name) },
+        { status: 413 },
+      );
+    }
     const bytes = Buffer.from(await file.arrayBuffer());
     const validation = validateUploadBytes(bytes);
     if (!validation.ok) {
