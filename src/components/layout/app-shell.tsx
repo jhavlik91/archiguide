@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -36,8 +36,11 @@ export type AppShellProps = {
    * feature-agnostic.
    */
   contextSwitcher?: React.ReactNode;
-  /** Unread notification count shown on the bell. */
-  notificationCount?: number;
+  /**
+   * Notification control rendered in the top bar — the live notification bell
+   * (T032). A slot so the shell stays feature-agnostic.
+   */
+  notificationSlot?: React.ReactNode;
   user?: AppShellUser;
   /**
    * Account controls rendered next to the avatar (e.g. a sign-out button).
@@ -109,7 +112,7 @@ function AppShell({
   navItems,
   activeHref,
   contextSwitcher,
-  notificationCount = 0,
+  notificationSlot,
   user,
   accountMenu,
   areaLabel,
@@ -200,23 +203,7 @@ function AppShell({
 
           <div className="min-w-0 flex-1">{contextSwitcher}</div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            aria-label={
-              notificationCount > 0
-                ? `Notifikace: ${notificationCount} nepřečtených`
-                : "Notifikace"
-            }
-          >
-            <Bell />
-            {notificationCount > 0 ? (
-              <span className="bg-destructive text-destructive-foreground absolute -top-0.5 -right-0.5 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-semibold">
-                {notificationCount > 99 ? "99+" : notificationCount}
-              </span>
-            ) : null}
-          </Button>
+          {notificationSlot}
 
           {user ? (
             <Avatar className="size-9">
