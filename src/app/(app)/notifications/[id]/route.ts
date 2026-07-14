@@ -17,6 +17,21 @@ import {
  * nepotvrzujeme existenci; T032 § Permissions). Cíl (`linkPath`) může mezitím
  * zmizet; o nedostupnost se postará cílová stránka (T032 § Alternative flows).
  */
+
+/**
+ * Přesměrujeme jen na VLASTNÍ relativní cestu. `linkPath` sice dnes plní výhradně
+ * doménový kód konstantami, ale je to uložená hodnota, kterou tahle route slepě
+ * předává do `redirect()` — kdyby ji někdy naplnil uživatelský vstup, byl by
+ * z toho open redirect. Fail-closed: cokoli, co není `/cesta`, skončí v centru.
+ * `//host` a `/\host` odmítáme taky — prohlížeč je čte jako protokol-relativní URL.
+ */
+function safeLinkPath(linkPath: string): string {
+  if (!linkPath.startsWith("/")) return "/notifications";
+  if (linkPath.startsWith("//") || linkPath.startsWith("/\\")) {
+    return "/notifications";
+  }
+  return linkPath;
+}
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -41,5 +56,5 @@ export async function GET(
     trackEvent("notification.opened", { eventType: notification.eventType });
   }
 
-  redirect(notification.linkPath || "/notifications");
+  redirect(safeLinkPath(notification.linkPath));
 }

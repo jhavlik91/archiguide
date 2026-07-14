@@ -54,7 +54,7 @@ export function NotificationRow({
             ) : null}
           </span>
           <time className="text-muted-foreground shrink-0 text-xs">
-            {formatRelative(n.createdAt)}
+            {formatRelative(n.lastEventAt)}
           </time>
         </div>
         <p className="text-muted-foreground truncate text-xs">{n.reason}</p>

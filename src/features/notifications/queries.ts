@@ -27,7 +27,7 @@ function toView(n: Notification): NotificationView {
     priority: n.priority,
     unread: n.state === "unread",
     count: n.count,
-    createdAt: n.createdAt.toISOString(),
+    lastEventAt: n.lastEventAt.toISOString(),
   };
 }
 

@@ -88,7 +88,12 @@ export type NotificationView = {
   unread: boolean;
   /** Kolik událostí se sloučilo (pro „Nová zpráva ×5"). */
   count: number;
-  createdAt: string;
+  /**
+   * Čas POSLEDNÍ události v notifikaci — tedy to, podle čeho centrum řadí. Dedup
+   * bump ho posune, takže sloučená notifikace ukazuje čas nejnovější události, ne
+   * té první (jinak by položka nahoře nesla nejstarší čas v seznamu).
+   */
+  lastEventAt: string;
 };
 
 /** Datový balík pro notifikační centrum (zvoneček): počet + posledních N položek. */
