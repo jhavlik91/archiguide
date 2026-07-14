@@ -21,8 +21,7 @@ export function ProfessionalCard({ card }: { card: Card_ }) {
     <Card className="overflow-hidden transition-shadow hover:shadow-md">
       <TrackedLink
         href={`/profesional/${card.slug}`}
-        event="search_result_clicked"
-        payload={{ slug: card.slug }}
+        slug={card.slug}
         className="focus-visible:ring-ring block focus-visible:ring-2 focus-visible:outline-none"
       >
         {card.portfolioCoverUrl ? (
