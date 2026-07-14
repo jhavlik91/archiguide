@@ -57,7 +57,11 @@ export type AnalyticsEvent =
   | "brief.ready"
   // Messaging — core (T030)
   | "messaging.conversation_started"
-  | "messaging.message_sent";
+  | "messaging.message_sent"
+  // Messaging — přílohy, blokace, nahlášení (T031)
+  | "messaging.attachment_sent"
+  | "messaging.conversation_blocked"
+  | "messaging.message_reported";
 
 export function trackEvent(
   event: AnalyticsEvent,

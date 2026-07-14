@@ -92,3 +92,56 @@ export async function deactivateUserByEmail(email: string): Promise<void> {
     data: { status: "deactivated" },
   });
 }
+
+// --- Messaging — přílohy / blokace / report (T031) --------------------------
+
+/** ID nejnovější zprávy v konverzaci (pro ověření reportu / příloh). */
+export async function latestMessageId(conversationId: string): Promise<string> {
+  const msg = await db.message.findFirstOrThrow({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return msg.id;
+}
+
+/** ID první (aktivní i smazané) přílohy dané zprávy, nebo null. */
+export async function attachmentIdForMessage(
+  messageId: string,
+): Promise<string | null> {
+  const att = await db.attachment.findFirst({
+    where: { contextType: "message", contextId: messageId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return att?.id ?? null;
+}
+
+/** Počet reportů dané zprávy (target type message). */
+export async function reportCountForMessage(
+  messageId: string,
+): Promise<number> {
+  return db.report.count({
+    where: { targetType: "message", targetId: messageId },
+  });
+}
+
+/** Existuje aktivní blokace blocker→blocked? */
+export async function blockExists(
+  blockerEmail: string,
+  blockedEmail: string,
+): Promise<boolean> {
+  const [blocker, blocked] = await Promise.all([
+    db.user.findUniqueOrThrow({ where: { email: blockerEmail } }),
+    db.user.findUniqueOrThrow({ where: { email: blockedEmail } }),
+  ]);
+  const row = await db.block.findUnique({
+    where: {
+      blockerUserId_blockedUserId: {
+        blockerUserId: blocker.id,
+        blockedUserId: blocked.id,
+      },
+    },
+  });
+  return row !== null;
+}
