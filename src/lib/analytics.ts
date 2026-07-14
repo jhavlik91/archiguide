@@ -60,7 +60,11 @@ export type AnalyticsEvent =
   | "messaging.message_sent"
   // Notifikace — event systém + in-app (T032)
   | "notification.created"
-  | "notification.opened";
+  | "notification.opened"
+  // Vyhledávání profesionálů (T034)
+  | "search_performed"
+  | "search_result_clicked"
+  | "search_empty";
 
 export function trackEvent(
   event: AnalyticsEvent,
