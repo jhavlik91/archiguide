@@ -55,13 +55,36 @@ export type AnalyticsEvent =
   | "brief.created"
   | "brief.regenerated"
   | "brief.ready"
+  // Brief — editace, sdílení, export (T022)
+  | "brief.edited"
+  | "brief.shared"
+  | "brief.share_revoked"
+  | "brief.exported"
+  | "brief.archived"
   // Messaging — core (T030)
   | "messaging.conversation_started"
   | "messaging.message_sent"
   // Messaging — přílohy, blokace, nahlášení (T031)
   | "messaging.attachment_sent"
   | "messaging.conversation_blocked"
-  | "messaging.message_reported";
+  | "messaging.message_reported"
+  // Notifikace — event systém + in-app (T032)
+  | "notification.created"
+  | "notification.opened"
+  // Vyhledávání profesionálů (T034)
+  | "search_performed"
+  | "search_result_clicked"
+  | "search_empty"
+  // Poptávka — CRUD + stavový model (T024)
+  | "request.created"
+  | "request.published"
+  | "request.discussion_started"
+  | "request.paused"
+  | "request.resumed"
+  | "request.awarded"
+  | "request.closed"
+  | "request.cancelled"
+  | "request.expired";
 
 export function trackEvent(
   event: AnalyticsEvent,

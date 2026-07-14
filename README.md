@@ -72,6 +72,35 @@ vlastní přístupovou logiku**.
 Storage adaptér je stejný jako u médií: `ATTACHMENT_STORAGE_DRIVER`
 (`filesystem` výchozí | `s3`), `ATTACHMENT_STORAGE_DIR` — viz `.env.example`.
 
+## Brief — editace, sdílení, export (T022)
+
+Vygenerovaný brief (T021, `/brief/[id]`) lze ručně upravovat, sdílet privátním
+odkazem a exportovat. Stav řídí automat (`zadani/08` §2):
+`draft → ready → shared`, `shared → revised → shared`, `draft → archived` —
+neplatné přechody server odmítne (`features/brief/transitions.ts`).
+
+- **Editace** (`/brief/[id]/upravit`): všechny sekce §18 formulářem (ne volný
+  text), **autosave** s debounce — nikdy neztratit rozpracované změny. Odvozená
+  pole (dostupné/chybějící podklady) se přebírají z odpovědí a editor je nemění
+  (merge je zachová). Úprava **sdíleného** briefu ho posune `shared → revised`;
+  příjemci vidí starší snapshot, dokud vlastník znovu nesdílí.
+- **Sdílení odkazem**: vygeneruje odvolatelný token (capability URL v plaintextu,
+  jen READ-ONLY přístup ke **zmrazenému snapshotu**). Sdílená stránka
+  `/sdileny-brief/[token]` je veřejná, bez přihlášení, **`noindex`**, a nikdy
+  neukazuje přesnou adresu ani soukromé přílohy. **Odvolání** token okamžitě
+  zneplatní (stránka vrací „odkaz již není platný"). Před sdílením proběhne
+  **privacy kontrola** (`zadani/12` §8): najde-li text vzor přesné adresy /
+  telefonu / e-mailu, zobrazí **neblokující** varování k vědomému potvrzení.
+- **Export** (`/brief/[id]/export`): tisknutelná stránka (tisk prohlížeče → PDF
+  stačí pro MVP). Výchozí export **neobsahuje soukromá pole** (přesná adresa);
+  zahrnou se jen s explicitním `?soukrome=1`. Tisk izoluje obsah od zbytku appky
+  přes `@media print` (viz `globals.css`).
+- **Přílohy**: brief registruje resolver kontextu pro sdílený systém příloh
+  (T023) — účastníkem kontextu je jen vlastník (brief je soukromá data).
+- Přístup (editace/sdílení/export/archivace) má **jen vlastník**; čtení sdílené
+  verze jde přes token bez přihlášení. Analytika: `brief.edited`, `brief.shared`,
+  `brief.share_revoked`, `brief.exported`, `brief.archived`.
+
 ## Zprávy (T030)
 
 Konverzace 1:1 mezi přihlášenými uživateli, textové zprávy, stav přečtení a inbox
@@ -94,6 +123,87 @@ jiný uživatel ani role konverzaci neotevře (cizí → 404, nepotvrzujeme exis
   zrušené/deaktivované protistraně je odeslání zablokované s vysvětlením.
 
 Přílohy, block/report a ochranu kontaktů řeší T031; notifikace T032/T033.
+
+## Poptávky (T024)
+
+Jádro marketplace: poptávka (`Request`) navázaná na projektový brief, s CRUD a
+kompletním **stavovým automatem**. Poptávka vzniká **vždy z briefu** (guide je
+kritická cesta) předvyplněná z jeho obsahu; jeden brief může mít víc poptávek
+(jiné profese). Přehled vlastníka je na `/requests`, detail a řízení na
+`/requests/[id]`.
+
+- **Stavový automat** (`draft → active → in_discussion → awarded → closed`,
+  `active → paused → active`, `active → cancelled|expired`,
+  `in_discussion|paused → cancelled`) je **jediným** způsobem změny stavu —
+  `features/requests/state-machine.ts` je zdroj pravdy, **neplatný přechod server
+  odmítne**. Přechody běží jako server akce s kontrolou oprávnění.
+- **Publikace dle permission matice** (`zadani/05` — „Publikovat B2C/B2B
+  poptávku"): návštěvník nikdy, účet pouze s rolí moderátor nikdy; jinak vlastník
+  (admin cokoliv). CRUD a ostatní přechody smí jen vlastník nebo admin.
+- **Snapshot briefu při publikaci** (`briefSnapshot`): pozdější změna briefu už
+  publikovanou poptávku neovlivní (zadani/09 — Request). Po publikaci je možné jen
+  **upřesnění** (rozpočet/termín/čas), ne změna smyslu — s viditelnou poznámkou
+  „upraveno".
+- **Expirace**: `active` poptávka s prošlým termínem přejde do `expired` (kontrola
+  při čtení + hromadná funkce `expireDueRequests` pro denní job) a nepřijímá
+  reakce.
+- **Audit** významných přechodů (publish/pause/resume/cancel/award/close/expire)
+  je append-only (`RequestAuditEntry`) s aktérem a `from→to` stavem.
+- **Viditelnost** je zatím jen pole (`private` default) — anonymizaci a veřejný
+  výpis řeší T025/T026; reakce T027, matching T028.
+
+## Notifikace (T032)
+
+Doménový event systém a in-app notifikace. Domény (messaging, marketplace,
+matching, verifikace…) hlásí události **výhradně jedním vstupním bodem**
+`@/lib/notifications` — `emit(eventType, recipient, context)` — a **nepíšou
+vlastní logiku doručování**. Katalog událostí (`EVENT_CATALOG`) je otevřený enum:
+nový typ = jen záznam v kódu, DB drží prostý string (bez migrace, bez hardcode na
+jednu doménu).
+
+- **Emit je best-effort:** selhání notifikace nikdy neshodí primární akci
+  (odeslání zprávy apod.). **Vlastní akce nenotifikuje** (`actorUserId ===
+  recipient` → skip). Neznámý typ, zrušený příjemce i vypnutý kanál se tiše přeskočí.
+- **Deduplikace:** dokud je notifikace **nepřečtená**, opakovaný emit se stejným
+  `dedupeKey` jen zvýší počet a vrátí ji nahoru (5 zpráv v konverzaci = **1**
+  nepřečtená notifikace s počtem ×5). Po přečtení vznikne nová.
+- **Kanály & preference:** default kanálová politika z katalogu (zadani/11);
+  respektuje uložené `User.notificationPreferences` (preferenční UI je T033). V MVP
+  se materializuje jen **in-app** (e-mail/SMS/push mimo rozsah).
+- **Centrum:** zvoneček v hlavičce (počet nepřečtených + posledních N) a stránka
+  `/notifications`. Každá notifikace nese **důvod** (proč ji divák dostal) a
+  **odkaz do kontextu**; klik ji zároveň označí přečtenou. Označit lze jednotlivě
+  i vše najednou.
+- **Bezpečnost:** uživatel vidí a spravuje **jen své** notifikace
+  (`notifications.access_own`, cizí nedostupné). Notifikace **neprozrazuje obsah**,
+  na který příjemce nemá právo (jen „nová zpráva", ne text).
+
+## Vyhledávání profesionálů (T034)
+
+Veřejný katalog a fulltextové vyhledávání profesionálů na `/profesionalove` —
+bez externího enginu, přes Postgres `tsvector`. Hledá se v headline, biu,
+specializacích, názvech profesí i názvech **publikovaných** portfolio projektů.
+
+- **Diakritika nerozhoduje** — `unaccent` na obou stranách, takže „zámečník"
+  i „zamecnik" vrací stejné výsledky. Dotaz je prefixový (`slovo:*`) a bezpečně
+  escapovaný: z uživatelského vstupu se berou jen alfanumerické tokeny, žádný
+  `to_tsquery` operátor se z něj neprovede.
+- **Synonyma profesí** z taxonomie (T005): „projektant" najde i profil s profesí
+  „projektant pozemních staveb", i když ji nemá doslovně v textu.
+- **Filtry** (profese, region/lokalita, specializace, ověřený účet) a **řazení**
+  (relevance / nejnovější) jsou **URL-persistované** — sdílitelné a SEO
+  indexovatelné; stránkuje se kurzorem (keyset, stabilní tie-break přes `id`).
+  Neznámý slug profese se ignoruje (nezmrazí výsledky).
+- **Jen veřejné, publikované profily** aktivních uživatelů. Draft/deaktivovaný se
+  ve výsledcích nikdy neobjeví; karta nenese žádná privátní pole (adresa,
+  kontakty) a ověření uvádí přesně (badge „Ověřený telefon", ne paušální
+  „Verified"). Odpublikování profilu ho z výsledků odstraní **okamžitě** —
+  dokument se skládá za běhu z živého stavu (bez materializovaného indexu;
+  ten je připravená cesta pro škálování, viz `features/search/service.ts`).
+- **Prázdný výsledek** nekončí ve slepé uličce — nabídne konkrétní kroky
+  (rozšířit region, odebrat filtr, zkusit příbuznou profesi, zobrazit vše).
+
+Migrace T034 přidává jen rozšíření `unaccent`; nemění cizí tabulky (T007/T012).
 
 ## Požadavky
 

@@ -59,6 +59,9 @@ model User {
   briefs              Brief[] // T021 (owner = uživatel)
   conversations       ConversationParticipant[] // T030 (účast v konverzacích)
   sentMessages        Message[] // T030 (odeslané zprávy)
+  notifications       Notification[] // T032 (přijaté in-app notifikace)
+  requests            Request[] // T024 (owner = uživatel)
+  requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
   reportsFiled        Report[]  @relation("ReportsFiled") // T031 (podaná nahlášení)
   blocksInitiated     Block[]   @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
   blocksReceived      Block[]   @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
@@ -1102,11 +1105,32 @@ model Brief {
   status     BriefStatus     @default(draft)
   visibility BriefVisibility @default(private)
 
+  /// Token sdíleného odkazu (T022). Náhodný high-entropy identifikátor v odkazu
+  /// (capability URL) — na rozdíl od reset/pozvánka tokenů se drží v plaintextu,
+  /// aby ho vlastník mohl znovu zobrazit/zkopírovat; přístup dává jen READ-ONLY
+  /// snapshotu, který vlastník vědomě sdílel. `null` = brief není sdílený odkazem
+  /// (nikdy nebyl, nebo byl odvolán → okamžitě přestane fungovat).
+  shareToken String? @unique
+
+  /// SNAPSHOT obsahu odeslaný příjemcům při sdílení (T022). Živý `content` se dál
+  /// edituje, ale příjemci vidí tento zmrazený stav, dokud vlastník znovu nesdílí
+  /// (zadani/08 §2: `shared → revised → shared`). `null` = dosud nesdíleno.
+  sharedContent  Json?
+  /// Snapshot názvu k `sharedContent`.
+  sharedTitle    String?
+  /// Kdy vznikl aktuální sdílený snapshot (řídí „sdílená verze je starší").
+  sharedAt       DateTime?
+  /// Kdy byl odkaz naposledy odvolán (T022 § Alternative flows). Odvoláním se
+  /// `shareTokenHash` vynuluje; toto drží čas kvůli auditu a UI hlášce.
+  shareRevokedAt DateTime?
+
   /// Kdy byl obsah naposledy vygenerován z odpovědí (regenerace ho aktualizuje).
   generatedAt DateTime @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  requests Request[] // T024 (poptávky vzniklé z tohoto briefu)
 
   @@index([ownerUserId])
   @@index([guideSessionId])
@@ -1219,6 +1243,218 @@ model Message {
   @@unique([conversationId, clientToken])
   @@index([conversationId, createdAt])
   @@map("messages")
+}
+
+// --- Notifikace (T032) ------------------------------------------------------
+
+/// Priorita notifikace (zadani/11 — Priority). Řídí zvýraznění v centru a
+/// (v navazujících taskech) výběr kanálů; v MVP se materializuje jen in-app.
+enum NotificationPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+/// Stav notifikace pro příjemce. `unread → read`; podporuje hromadné označení.
+enum NotificationState {
+  unread
+  read
+}
+
+/// In-app notifikace pro příjemce (T032). Vzniká VÝHRADNĚ přes jednotné emit API
+/// (`lib/notifications.ts`), které volají domény (messaging, marketplace, …) —
+/// model nezná konkrétní doménu: kontext je polymorfní (`contextType`+`contextId`,
+/// bez FK) a cíl kliknutí je uložená relativní `linkPath`.
+///
+/// Deduplikace: dokud je notifikace NEPŘEČTENÁ, opakovaný emit se stejným
+/// `dedupeKey` jen zvýší `count` a `lastEventAt` místo nového řádku (5 zpráv v
+/// jedné konverzaci = 1 nepřečtená notifikace s počtem). Po přečtení zakládá emit
+/// novou notifikaci. `lastEventAt` řadí centrum (bump ji vrátí nahoru); mazání
+/// není — přečtené zůstávají v historii.
+model Notification {
+  id String @id @default(cuid())
+
+  recipientUserId String
+  recipient       User   @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  /// Typ události z katalogu (`lib/notifications` — otevřený enum validovaný
+  /// v kódu, ne v DB, aby šel rozšířit bez migrace). Např. `new_message`.
+  eventType String
+
+  priority NotificationPriority @default(normal)
+  state    NotificationState    @default(unread)
+
+  /// Krátký titulek bez citlivého obsahu (např. „Nová zpráva"). Nikdy neobsahuje
+  /// obsah, na který příjemce nemusí mít právo (zadani/11 — Pravidla, T032 § Perm).
+  title String
+  /// Důvod, proč notifikaci příjemce dostal (zadani/11 — „uživatel musí znát důvod").
+  reason String
+  /// Cíl kliknutí — relativní cesta do kontextu (povinná). Vede na smysluplnou
+  /// stránku i když kontext mezitím zmizí (nedostupnost řeší cílová stránka).
+  linkPath String
+
+  /// Polymorfní odkaz na zdrojový kontext (bez FK — vazbu zná zdrojová doména).
+  contextType String?
+  contextId   String?
+
+  /// Klíč deduplikace (deterministický ze zdroje, např. `new_message:<convId>`).
+  dedupeKey String
+  /// Kolik událostí se do (nepřečtené) notifikace sloučilo. 1 = jediná událost.
+  count Int @default(1)
+
+  /// Kdy byla přečtena (`state = read`). NULL = nepřečtená.
+  readAt DateTime?
+  /// Čas poslední události v notifikaci (create i dedup-bump) — řadí centrum.
+  /// Oddělené od `updatedAt`, aby označení přečteno nepřerovnalo seznam.
+  lastEventAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([recipientUserId, state])
+  @@index([recipientUserId, lastEventAt])
+  // Dedup navíc vynucuje ČÁSTEČNÝ unikátní index (recipientUserId, dedupeKey)
+  // WHERE state = 'unread' — Prisma ho neumí vyjádřit, drží ho ruční migrace
+  // `notification_dedup_unique_unread` (kolizi P2002 řeší createOrBumpNotification).
+  @@index([recipientUserId, dedupeKey])
+  @@map("notifications")
+}
+// ---------------------------------------------------------------------------
+// Poptávka — CRUD + stavový model (T024)
+//
+// Jádro marketplace (legacy-master-spec §20, zadani/08 §3). Poptávka (`Request`)
+// vzniká VŽDY z briefu (guide je kritická cesta — poptávka bez briefu v MVP
+// nevzniká). Jeden brief může mít víc poptávek (jiné profese). Klíčové invarianty:
+//
+//  - STAVOVÝ AUTOMAT `draft → active → in_discussion → awarded → closed`
+//    (+ `active → paused → active`, `active → cancelled|expired`,
+//    `in_discussion → cancelled`) je jediným způsobem změny stavu. Neplatný
+//    přechod server odmítne (logika v `features/requests/state-machine.ts`).
+//  - SNAPSHOT BRIEFU při publikaci (`briefSnapshot`): pozdější změna briefu už
+//    publikovanou poptávku neovlivní (zadani/09 — Request). Do publikace se
+//    poptávka odkazuje na živý brief přes `briefId`.
+//  - VIDITELNOST (`private` default) tu jen existuje jako pole; anonymizaci a
+//    veřejný výpis řeší T025/T026 (least privilege — nová položka je soukromá).
+//  - AUDIT významných přechodů (`RequestAuditEntry`): publish/pause/cancel/
+//    award/close (+ resume/expire) se zaznamenávají s aktérem a from→to stavem.
+// ---------------------------------------------------------------------------
+/// Typ poptávky (v MVP jen `b2c` | `b2b`). Řídí publikační oprávnění (matice
+/// „Publikovat B2C/B2B poptávku"). Ostatní typy (invite-only, urgentní,
+/// subdodávka, práce) jsou finální produkt, mimo scope.
+enum RequestType {
+  b2c
+  b2b
+}
+
+/// Viditelnost poptávky. Nová je vždy `private` (jen vlastník). `shared_link`/
+/// `public` a anonymizace jsou vědomá akce v T025 — tady jen pole + default.
+enum RequestVisibility {
+  private
+  shared_link
+  public
+}
+
+/// Stav poptávky (zadani/08 §3). Enum v DB, uživatel vždy vidí aktuální stav.
+/// Terminální stavy: `closed`, `cancelled`, `expired`.
+enum RequestStatus {
+  draft
+  active
+  in_discussion
+  paused
+  awarded
+  closed
+  cancelled
+  expired
+}
+
+/// Poptávka navázaná na brief (§20). Dotazovatelné atributy (typ, stav, region,
+/// cílové profese) jsou vlastní sloupce; `briefSnapshot` je JSON kopie obsahu
+/// briefu z okamžiku publikace (nezávislá na pozdějších změnách briefu).
+model Request {
+  id String @id @default(cuid())
+
+  /// Vlastník poptávky. CRUD i přechody smí jen on (nebo admin) —
+  /// `lib/permissions.ts` → `requests.*`.
+  ownerUserId String
+  ownerUser   User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  /// Zdrojový brief. Poptávka bez briefu v MVP nevzniká; smazání briefu poptávku
+  /// neruší (`SetNull`) — publikovaná drží vlastní `briefSnapshot`.
+  briefId String?
+  brief   Brief?  @relation(fields: [briefId], references: [id], onDelete: SetNull)
+
+  type       RequestType       @default(b2c)
+  visibility RequestVisibility @default(private)
+  status     RequestStatus     @default(draft)
+
+  /// Název poptávky (předvyplněný z briefu, editovatelný v draftu).
+  title String
+
+  /// Cílové profese z taxonomie (T005) — snapshot slugů, ≥1 (validace `zod`).
+  /// Snapshot (ne FK): rozhodnutí nezmizí při pozdější změně číselníku.
+  targetProfessionSlugs String[]
+
+  /// Region působnosti (jen město/region, bez přesné adresy — zadani/09).
+  region String
+
+  /// Rozpočet — volný text, `null` = „neuvedeno" (nevím je validní, §Validation).
+  budget String?
+  /// Časový horizont — volný text, `null` = „neuvedeno".
+  timeline String?
+
+  /// Termín, po jehož překročení `active` poptávka expiruje (kontrola při čtení
+  /// + denní job). `null` = bez termínu, neexpiruje automaticky.
+  deadline DateTime?
+
+  /// Snapshot obsahu briefu (`BriefContent`) pořízený při PUBLIKACI. `null` do
+  /// publikace (draft čte živý brief přes `briefId`).
+  briefSnapshot Json?
+
+  /// Kdy byla poptávka poprvé publikována (`draft → active`). `null` = dosud draft.
+  publishedAt DateTime?
+
+  /// Byla poptávka editována po publikaci? Řídí viditelnou poznámku „upraveno"
+  /// (upřesnění po publikaci — main flow §3).
+  editedAfterPublish Boolean @default(false)
+
+  auditEntries RequestAuditEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUserId])
+  @@index([briefId])
+  @@index([status])
+  @@map("requests")
+}
+
+/// Auditní záznam významného přechodu poptávky (zadani/08 § Stavová pravidla).
+/// Append-only: nikdy se needituje/nemaže. Aktér je `null` u systémových
+/// přechodů (expirace denním jobem, zrušení při smazání účtu).
+model RequestAuditEntry {
+  id String @id @default(cuid())
+
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Kdo přechod provedl. `null` = systém (job/kaskáda). `SetNull` při smazání
+  /// účtu — auditní stopa zůstává, jen ztratí identitu.
+  actorUserId String?
+  actorUser   User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  /// Provedená akce (`published`, `paused`, `resumed`, `cancelled`, `awarded`,
+  /// `closed`, `expired`). Textová hodnota kvůli auditní stabilitě.
+  action String
+
+  /// Stav před a po přechodu (kvůli rekonstrukci historie).
+  fromStatus RequestStatus?
+  toStatus   RequestStatus
+
+  createdAt DateTime @default(now())
+
+  @@index([requestId, createdAt])
+  @@map("request_audit_entries")
 }
 
 // ---------------------------------------------------------------------------

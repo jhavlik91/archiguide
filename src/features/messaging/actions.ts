@@ -16,7 +16,7 @@ import {
   canStartConversation,
 } from "./permissions";
 import { sendBlockReason } from "./rules";
-import { performSend, type SendResult } from "./send";
+import { notifyNewMessage, performSend, type SendResult } from "./send";
 import {
   createBlock,
   createMessage,
@@ -68,8 +68,8 @@ export type ReportResult =
 
 /**
  * Odešle textovou zprávu do existující konverzace (bez příloh — ty jdou přes
- * multipart routu `/api/messages`). Idempotentní přes `clientToken`; kontroly a
- * vložení sdílí s routou přes `performSend`.
+ * multipart routu `/api/messages`). Idempotentní přes `clientToken`; kontroly,
+ * vložení i notifikaci příjemců (T032) sdílí s routou přes `performSend`.
  */
 export async function sendMessage(input: unknown): Promise<SendResult> {
   const parsed = sendMessageSchema.safeParse(input);
@@ -154,6 +154,10 @@ export async function startConversation(input: unknown): Promise<StartResult> {
         trackEvent("messaging.message_sent", {
           conversationId: conversation.id,
         });
+        await notifyNewMessage(conversation.id, actor.userId, [
+          actor.userId,
+          recipientId,
+        ]);
       }
     }
 

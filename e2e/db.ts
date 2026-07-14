@@ -145,3 +145,31 @@ export async function blockExists(
   });
   return row !== null;
 }
+
+// --- Notifikace (T032) ------------------------------------------------------
+// Notifikace vznikají jako vedlejší efekt doménových akcí (emit z messagingu
+// apod.); e2e je ověřuje přes reálné UI, ale pro přesná tvrzení (dedup počet,
+// stav) čte i přímo z DB.
+
+/** Notifikace příjemce (nejnovější událost nahoře) pro přesná tvrzení v e2e. */
+export async function listNotificationsFor(recipientUserId: string): Promise<
+  { title: string; dedupeKey: string; count: number; state: string }[]
+> {
+  return db.notification.findMany({
+    where: { recipientUserId },
+    orderBy: { lastEventAt: "desc" },
+    select: { title: true, dedupeKey: true, count: true, state: true },
+  });
+}
+
+/** ID nejnovější notifikace příjemce (pro test přístupu k cizí notifikaci). */
+export async function getNotificationIdFor(
+  recipientUserId: string,
+): Promise<string | null> {
+  const row = await db.notification.findFirst({
+    where: { recipientUserId },
+    orderBy: { lastEventAt: "desc" },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}

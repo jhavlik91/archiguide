@@ -133,7 +133,7 @@ export interface BriefContent {
   nextStep: string | null;
 }
 
-/** Náhled briefu pro UI (snapshot + metadata řádku). */
+/** Náhled briefu pro VLASTNÍKA (živý obsah + metadata sdílení). */
 export interface BriefView {
   id: string;
   ownerUserId: string;
@@ -142,6 +142,30 @@ export interface BriefView {
   title: string;
   status: BriefStatus;
   visibility: BriefVisibility;
+  /** Živý (editovatelný) obsah §18. */
   content: BriefContent;
   generatedAt: string;
+  /** Token sdíleného odkazu (plaintext), nebo `null`, není-li aktivně sdíleno. */
+  shareToken: string | null;
+  /** Kdy vznikl aktuální sdílený snapshot (ISO), nebo `null`. */
+  sharedAt: string | null;
+  /** Kdy byl odkaz naposledy odvolán (ISO), nebo `null`. */
+  shareRevokedAt: string | null;
+  /**
+   * Je sdílený snapshot STARŠÍ než živý obsah? (`status === "revised"` — vlastník
+   * upravil brief po sdílení; příjemci zatím vidí starší verzi.)
+   */
+  hasUnsharedChanges: boolean;
+}
+
+/**
+ * Read-only pohled na SDÍLENÝ brief pro příjemce odkazu (T022). Vychází ze
+ * zmrazeného `sharedContent` snapshotu, má odstraněná soukromá pole
+ * (`redactBriefPrivate`) a NEOBSAHUJE token ani identitu vlastníka.
+ */
+export interface SharedBriefView {
+  title: string;
+  content: BriefContent;
+  scenarioSlug: string;
+  sharedAt: string;
 }

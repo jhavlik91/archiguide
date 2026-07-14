@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({
@@ -27,5 +27,10 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // E2e sada dělá desítky registrací/loginů z jedné IP — produkční limit
+    // 5/min/IP by ji nedeterministicky shazoval (viz src/lib/rate-limit.ts).
+    // Pozor: `reuseExistingServer` — ručně spuštěný dev server pro e2e musí
+    // proměnnou dostat taky (`RATE_LIMIT_DISABLED=1 npm run dev`).
+    env: { RATE_LIMIT_DISABLED: "1" },
   },
 });

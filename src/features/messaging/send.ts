@@ -2,6 +2,7 @@ import "server-only";
 
 import { trackEvent } from "@/lib/analytics";
 import { toView as attachmentToView } from "@/lib/attachments";
+import { emit } from "@/lib/notifications";
 import { getActor } from "@/lib/session";
 // Import zároveň registruje oprávnění messagingu (access/send/…).
 import { canSendToConversation } from "./permissions";
@@ -23,9 +24,44 @@ import { type MessageView } from "./types";
  * Sdílené jádro odeslání zprávy (T030 + přílohy/blokace T031). Používá ho jak
  * textová server akce (`actions.sendMessage`), tak multipart routa s přílohami
  * (`/api/messages`), aby kontroly (účastnictví, dostupnost protistrany, blokace,
- * reply reference) i idempotence žily na JEDNOM místě. Nikdy nevyhazuje kvůli
- * očekávaným stavům — vrací výsledek, aby UI nehlásilo falešně „odesláno".
+ * reply reference), idempotence i notifikace příjemců (T032) žily na JEDNOM
+ * místě. Nikdy nevyhazuje kvůli očekávaným stavům — vrací výsledek, aby UI
+ * nehlásilo falešně „odesláno".
  */
+
+/**
+ * Vyrozumí ostatní účastníky o nové zprávě (T032). Emituje se přes jednotné API
+ * (`@/lib/notifications`), je best-effort (nikdy neshodí odeslání) a NIKDY nenese
+ * obsah zprávy — jen „nová zpráva" + odkaz do konverzace (T032 § Permissions).
+ * Deduplikace přes klíč konverzace: rychlá série zpráv = 1 nepřečtená notifikace
+ * s počtem. Odesílatel (původce akce) notifikaci nedostane.
+ *
+ * Bydlí tady (ne v `actions.ts`), protože zprávu zakládá i multipart routa
+ * `/api/messages` — kdyby emit zůstal jen v akci, zpráva s přílohou by příjemci
+ * notifikaci nikdy neposlala. `startConversation` si ho importuje pro úvodní zprávu.
+ */
+export async function notifyNewMessage(
+  conversationId: string,
+  senderUserId: string,
+  participantUserIds: readonly string[],
+): Promise<void> {
+  const recipients = participantUserIds.filter((id) => id !== senderUserId);
+  await Promise.all(
+    recipients.map((recipientUserId) =>
+      emit({
+        eventType: "new_message",
+        recipientUserId,
+        actorUserId: senderUserId,
+        title: "Nová zpráva",
+        reason: "Dostáváte upozornění na nové zprávy ve vaší konverzaci.",
+        link: `/messages/${conversationId}`,
+        // Dedup klíč se odvodí z kontextu (`new_message:conversation:<id>`) —
+        // explicitní klíč by se s odvozeným rozešel u dalších emitentů události.
+        context: { type: "conversation", id: conversationId },
+      }),
+    ),
+  );
+}
 
 export type SendResult =
   | { ok: true; message: MessageView }
@@ -138,6 +174,9 @@ export async function performSend(input: PerformSendInput): Promise<SendResult> 
           count: input.attachments.length,
         });
       }
+      // Notifikace příjemců (T032). Best-effort — `emit` nikdy nevyhodí, takže
+      // selhání notifikace neshodí už uloženou zprávu.
+      await notifyNewMessage(conv.id, actor.userId, participantUserIds);
     }
 
     // Přílohy nové zprávy do view (u opakovaného odeslání načte ty existující).
