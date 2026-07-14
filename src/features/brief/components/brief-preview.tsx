@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { markBriefReadyAction, regenerateBriefAction } from "../actions";
+import { createRequestFromBriefAction } from "@/features/requests/actions";
 import { BRIEF_STATUS_LABELS, type BriefView } from "../types";
 
 /**
@@ -44,6 +45,13 @@ export function BriefPreview({ brief }: { brief: BriefView }) {
       } else {
         toast.error(res.error);
       }
+    });
+  }
+
+  function createRequest() {
+    // Akce založí draft poptávku a přesměruje na její detail (redirect uvnitř).
+    startTransition(async () => {
+      await createRequestFromBriefAction(brief.id);
     });
   }
 
@@ -224,10 +232,14 @@ export function BriefPreview({ brief }: { brief: BriefView }) {
               <Pencil />
               Upravit brief (brzy)
             </Button>
-            {/* Slot T024 — poptávka. */}
-            <Button variant="outline" disabled>
-              <Send />
-              Vytvořit poptávku (brzy)
+            {/* Vytvoření poptávky z briefu (T024). */}
+            <Button
+              variant="outline"
+              onClick={createRequest}
+              disabled={pending}
+            >
+              {pending ? <Loader2 className="animate-spin" /> : <Send />}
+              Vytvořit poptávku
             </Button>
 
             {brief.guideSessionId ? (

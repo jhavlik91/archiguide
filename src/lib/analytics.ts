@@ -57,7 +57,17 @@ export type AnalyticsEvent =
   | "brief.ready"
   // Messaging — core (T030)
   | "messaging.conversation_started"
-  | "messaging.message_sent";
+  | "messaging.message_sent"
+  // Poptávka — CRUD + stavový model (T024)
+  | "request.created"
+  | "request.published"
+  | "request.discussion_started"
+  | "request.paused"
+  | "request.resumed"
+  | "request.awarded"
+  | "request.closed"
+  | "request.cancelled"
+  | "request.expired";
 
 export function trackEvent(
   event: AnalyticsEvent,
