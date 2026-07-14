@@ -21,11 +21,15 @@ const store = new Map<string, Bucket>();
 /**
  * Vypnutí limiteru pro automatizované testy: e2e sada spouští desítky citlivých
  * akcí (registrace, login) z jedné IP a limit 5/min by ji nedeterministicky
- * shazoval. Nastavuje pouze e2e web server (playwright.config.ts); v produkci
- * proměnná neexistuje a limiter je vždy aktivní.
+ * shazoval. Nastavuje pouze e2e web server (playwright.config.ts). V produkci
+ * se přepínač ignoruje — limiter je brute-force obrana (T003) a nesmí jít
+ * vypnout omylem protečenou proměnnou prostředí.
  */
 function isDisabled(): boolean {
-  return process.env.RATE_LIMIT_DISABLED === "1";
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.RATE_LIMIT_DISABLED === "1"
+  );
 }
 
 /**

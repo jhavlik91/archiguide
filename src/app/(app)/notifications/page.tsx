@@ -9,6 +9,6 @@ import { NotificationsView } from "@/features/notifications/components/notificat
  */
 export default async function NotificationsPage() {
   await requireUser();
-  const items = await getAllNotifications();
-  return <NotificationsView initial={items} />;
+  const { items, unreadCount } = await getAllNotifications();
+  return <NotificationsView initial={items} initialUnread={unreadCount} />;
 }

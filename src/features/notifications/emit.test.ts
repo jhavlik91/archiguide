@@ -10,11 +10,13 @@ import type { NotificationPreferences } from "./types";
 let created = true;
 let prefs: NotificationPreferences = {};
 let deliverable = true;
+let dbFailure: Error | null = null;
 const createSpy = vi.fn();
 
 vi.mock("./service", () => ({
   createOrBumpNotification: (input: Record<string, unknown>) => {
     createSpy(input);
+    if (dbFailure) return Promise.reject(dbFailure);
     return Promise.resolve({
       notification: { id: "n1", priority: input.priority },
       created,
@@ -33,6 +35,7 @@ beforeEach(() => {
   created = true;
   prefs = {};
   deliverable = true;
+  dbFailure = null;
 });
 afterEach(() => {
   createSpy.mockClear();
@@ -79,6 +82,14 @@ describe("emit — katalog a validace", () => {
     const res = await emit(base);
     expect(res).toEqual({ status: "skipped", reason: "undeliverable" });
     expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it("selhání datové vrstvy → skip error, nevyhodí (best-effort)", async () => {
+    dbFailure = new Error("db down");
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await emit(base);
+    expect(res).toEqual({ status: "skipped", reason: "error" });
+    errorLog.mockRestore();
   });
 });
 

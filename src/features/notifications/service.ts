@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Notification } from "@prisma/client";
+import { Prisma, type Notification } from "@prisma/client";
 import { db } from "@/lib/db";
 import { higherPriority } from "./rules";
 import {
@@ -29,58 +29,92 @@ export type CreateNotificationInput = {
   dedupeKey: string;
 };
 
+/** Prisma chyby, přes které se dedup smyčka zotaví jinou větví. */
+function isPrismaError(error: unknown, code: "P2002" | "P2025"): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+  );
+}
+
 /**
  * Vloží notifikaci, nebo — existuje-li NEPŘEČTENÁ se stejným `(recipient, dedupeKey)`
  * — jen ji „bumpne": zvýší počet, obnoví `lastEventAt` (vrátí ji nahoru v centru) a
  * případně zvýší prioritu (nikdy nesníží). `created` odliší novou notifikaci od
- * sloučené (pro analytiku `notification.created` a UI). Sekvenční emity (zprávy v
- * konverzaci vznikají po jedné) tím spolehlivě sloučí do jediné položky s počtem.
+ * sloučené (pro analytiku `notification.created` a UI).
+ *
+ * Odolné vůči souběhům, které prostý find-then-write ztrácel:
+ *  - závod s `markRead`: bump má ve `where` i `state: "unread"` — když čtenář
+ *    notifikaci mezitím přečte, update selže (P2025) a nová událost založí novou
+ *    NEPŘEČTENOU notifikaci (jinak by se tiše sloučila do přečtené a zvoneček
+ *    by ji nikdy neukázal);
+ *  - souběžné emity stejného klíče: duplicitní create odmítne částečný unikátní
+ *    index `(recipientUserId, dedupeKey) WHERE state = 'unread'` (viz migrace
+ *    `notification_dedup_unique_unread`) a P2002 se zotaví bumpem řádku, který
+ *    závod vyhrál.
  */
 export async function createOrBumpNotification(
   input: CreateNotificationInput,
 ): Promise<{ notification: Notification; created: boolean }> {
-  const existing = await db.notification.findFirst({
-    where: {
-      recipientUserId: input.recipientUserId,
-      dedupeKey: input.dedupeKey,
-      state: "unread",
-    },
-  });
-
-  if (existing) {
-    const notification = await db.notification.update({
-      where: { id: existing.id },
-      data: {
-        count: { increment: 1 },
-        lastEventAt: new Date(),
-        priority: higherPriority(
-          existing.priority,
-          NOTIFICATION_PRIORITIES,
-          input.priority,
-        ),
-        // Titulek/odkaz obnovíme na nejnovější (kontext se mohl posunout).
-        title: input.title,
-        reason: input.reason,
-        linkPath: input.linkPath,
+  // Dva pokusy: každá větev může prohrát právě jeden závod (bump × markRead,
+  // create × souběžný create) a druhé kolo ho dořeší opačnou větví.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const existing = await db.notification.findFirst({
+      where: {
+        recipientUserId: input.recipientUserId,
+        dedupeKey: input.dedupeKey,
+        state: "unread",
       },
     });
-    return { notification, created: false };
-  }
 
-  const notification = await db.notification.create({
-    data: {
-      recipientUserId: input.recipientUserId,
-      eventType: input.eventType,
-      priority: input.priority,
-      title: input.title,
-      reason: input.reason,
-      linkPath: input.linkPath,
-      contextType: input.context?.type ?? null,
-      contextId: input.context?.id ?? null,
-      dedupeKey: input.dedupeKey,
-    },
-  });
-  return { notification, created: true };
+    if (existing) {
+      try {
+        const notification = await db.notification.update({
+          // `state` ve where: mezitím přečtenou notifikaci nebumpneme (P2025).
+          where: { id: existing.id, state: "unread" },
+          data: {
+            count: { increment: 1 },
+            lastEventAt: new Date(),
+            priority: higherPriority(
+              existing.priority,
+              NOTIFICATION_PRIORITIES,
+              input.priority,
+            ),
+            // Titulek/odkaz obnovíme na nejnovější (kontext se mohl posunout).
+            title: input.title,
+            reason: input.reason,
+            linkPath: input.linkPath,
+          },
+        });
+        return { notification, created: false };
+      } catch (error) {
+        if (!isPrismaError(error, "P2025")) throw error;
+        // markRead vyhrál závod — projdeme na create nové nepřečtené.
+      }
+    }
+
+    try {
+      const notification = await db.notification.create({
+        data: {
+          recipientUserId: input.recipientUserId,
+          eventType: input.eventType,
+          priority: input.priority,
+          title: input.title,
+          reason: input.reason,
+          linkPath: input.linkPath,
+          contextType: input.context?.type ?? null,
+          contextId: input.context?.id ?? null,
+          dedupeKey: input.dedupeKey,
+        },
+      });
+      return { notification, created: true };
+    } catch (error) {
+      if (!isPrismaError(error, "P2002")) throw error;
+      // Souběžný emit založil nepřečtený řádek první — další kolo ho bumpne.
+    }
+  }
+  throw new Error(
+    "createOrBumpNotification: dedup se nepodařilo vyřešit ani na druhý pokus",
+  );
 }
 
 /** Posledních N notifikací příjemce pro centrum (nejnovější událost nahoře). */

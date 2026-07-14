@@ -14,10 +14,12 @@ import { NotificationRow } from "./notification-row";
  */
 export function NotificationsView({
   initial,
+  initialUnread,
 }: {
   initial: NotificationView[];
+  /** Skutečný počet nepřečtených (ne odvozený z limitovaného seznamu). */
+  initialUnread: number;
 }) {
-  const initialUnread = initial.filter((n) => n.unread).length;
   const { items, unreadCount, markAll } = useNotifications(initial, initialUnread);
 
   return (

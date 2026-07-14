@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 import {
   createOrBumpNotification,
   markAllRead,
@@ -30,6 +31,19 @@ type Notif = {
 };
 
 let store: Notif[] = [];
+/**
+ * Jednorázový přepis výsledku `findFirst` — simulace souběhu: emit pracuje se
+ * ZASTARALÝM snímkem (řádek mezitím přečetl markRead / založil souběžný emit),
+ * přesně jako u dvou paralelních transakcí nad reálnou DB.
+ */
+let findFirstOnce: Notif | null | undefined;
+
+function prismaError(code: "P2002" | "P2025"): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError("simulace DB", {
+    code,
+    clientVersion: "test",
+  });
+}
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -38,16 +52,34 @@ vi.mock("@/lib/db", () => ({
         where,
       }: {
         where: { recipientUserId: string; dedupeKey: string; state: string };
-      }) =>
-        Promise.resolve(
+      }) => {
+        if (findFirstOnce !== undefined) {
+          const stale = findFirstOnce;
+          findFirstOnce = undefined;
+          return Promise.resolve(stale);
+        }
+        return Promise.resolve(
           store.find(
             (n) =>
               n.recipientUserId === where.recipientUserId &&
               n.dedupeKey === where.dedupeKey &&
               n.state === where.state,
           ) ?? null,
-        ),
+        );
+      },
       create: ({ data }: { data: Record<string, unknown> }) => {
+        // Simulace částečného unikátního indexu (recipient, dedupeKey) WHERE
+        // state = 'unread' z migrace `notification_dedup_unique_unread`.
+        if (
+          store.some(
+            (x) =>
+              x.recipientUserId === data.recipientUserId &&
+              x.dedupeKey === data.dedupeKey &&
+              x.state === "unread",
+          )
+        ) {
+          return Promise.reject(prismaError("P2002"));
+        }
         const n: Notif = {
           id: `notif_${store.length + 1}`,
           recipientUserId: data.recipientUserId as string,
@@ -72,7 +104,7 @@ vi.mock("@/lib/db", () => ({
         where,
         data,
       }: {
-        where: { id: string };
+        where: { id: string; state?: string };
         data: {
           count?: { increment: number };
           lastEventAt?: Date;
@@ -82,7 +114,12 @@ vi.mock("@/lib/db", () => ({
           linkPath?: string;
         };
       }) => {
-        const n = store.find((x) => x.id === where.id)!;
+        const n = store.find(
+          (x) =>
+            x.id === where.id &&
+            (where.state === undefined || x.state === where.state),
+        );
+        if (!n) return Promise.reject(prismaError("P2025"));
         if (data.count) n.count += data.count.increment;
         if (data.lastEventAt) n.lastEventAt = data.lastEventAt;
         if (data.priority) n.priority = data.priority;
@@ -116,6 +153,7 @@ vi.mock("@/lib/db", () => ({
 
 afterEach(() => {
   store = [];
+  findFirstOnce = undefined;
 });
 
 const base = {
@@ -163,6 +201,33 @@ describe("createOrBumpNotification (deduplikace)", () => {
     await createOrBumpNotification(base);
     await createOrBumpNotification({ ...base, recipientUserId: "u2" });
     expect(store).toHaveLength(2);
+  });
+});
+
+describe("createOrBumpNotification (souběhy)", () => {
+  it("závod s markRead: událost se neztratí — vznikne nová nepřečtená", async () => {
+    const { notification } = await createOrBumpNotification(base);
+    // Emit si stihl přečíst řádek jako nepřečtený (zastaralý snímek)…
+    findFirstOnce = { ...store[0]! };
+    // …ale markRead ho mezitím označil. Bump musí selhat a událost založit novou.
+    await markRead(notification.id, "u1");
+
+    const second = await createOrBumpNotification(base);
+    expect(second.created).toBe(true);
+    expect(store).toHaveLength(2);
+    expect(store.filter((n) => n.state === "unread")).toHaveLength(1);
+  });
+
+  it("souběžné emity: prohraný create (unikátní index) se zotaví bumpem", async () => {
+    await createOrBumpNotification(base);
+    // Druhý emit četl DB dřív, než první stihl vložit (findFirst → null); jeho
+    // create narazí na unikátní index a druhé kolo řádek vítěze bumpne.
+    findFirstOnce = null;
+
+    const res = await createOrBumpNotification(base);
+    expect(res.created).toBe(false);
+    expect(store).toHaveLength(1);
+    expect(store[0]!.count).toBe(2);
   });
 });
 

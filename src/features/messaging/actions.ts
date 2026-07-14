@@ -90,8 +90,9 @@ async function notifyNewMessage(
         title: "Nová zpráva",
         reason: "Dostáváte upozornění na nové zprávy ve vaší konverzaci.",
         link: `/messages/${conversationId}`,
+        // Dedup klíč se odvodí z kontextu (`new_message:conversation:<id>`) —
+        // explicitní klíč by se s odvozeným rozešel u dalších emitentů události.
         context: { type: "conversation", id: conversationId },
-        dedupeKey: `new_message:${conversationId}`,
       }),
     ),
   );

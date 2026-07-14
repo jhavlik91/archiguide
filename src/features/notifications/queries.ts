@@ -47,12 +47,20 @@ export async function getNotificationCentre(): Promise<NotificationCentre> {
   return { unreadCount, items: rows.map(toView) };
 }
 
-/** Kompletní seznam notifikací diváka pro stránku `/notifications`. */
+/**
+ * Seznam notifikací diváka pro stránku `/notifications` + SKUTEČNÝ počet
+ * nepřečtených. Počet se nesmí odvozovat z (limitovaného) seznamu — nepřečtená
+ * starší než `limit` položek by jinak ze stránky nešla odbavit, přestože ji
+ * zvoneček dál počítá.
+ */
 export async function getAllNotifications(
   limit = 100,
-): Promise<NotificationView[]> {
+): Promise<{ items: NotificationView[]; unreadCount: number }> {
   const actor = await getActor();
-  if (actor.kind !== "user") return [];
-  const rows = await listNotifications(actor.userId, limit);
-  return rows.map(toView);
+  if (actor.kind !== "user") return { items: [], unreadCount: 0 };
+  const [rows, unreadCount] = await Promise.all([
+    listNotifications(actor.userId, limit),
+    countUnread(actor.userId),
+  ]);
+  return { items: rows.map(toView), unreadCount };
 }

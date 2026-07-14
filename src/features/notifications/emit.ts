@@ -51,7 +51,13 @@ export type EmitResult =
   | { status: "deduped"; id: string }
   | {
       status: "skipped";
-      reason: "self" | "unknown_event" | "channel_off" | "undeliverable" | "invalid";
+      reason:
+        | "self"
+        | "unknown_event"
+        | "channel_off"
+        | "undeliverable"
+        | "invalid"
+        | "error";
     };
 
 export async function emit(input: EmitInput): Promise<EmitResult> {
@@ -116,7 +122,9 @@ export async function emit(input: EmitInput): Promise<EmitResult> {
     }
     return { status: "deduped", id: notification.id };
   } catch (error) {
-    // Best-effort: selhání notifikace nesmí shodit primární akci.
+    // Best-effort: selhání notifikace nesmí shodit primární akci. `error` (na
+    // rozdíl od `invalid`) říká, že šlo o infrastrukturu (DB apod.), ne o vstup —
+    // budoucí metriky/alerting je nesmí míchat.
     console.error(
       JSON.stringify({
         type: "notification_error",
@@ -124,6 +132,6 @@ export async function emit(input: EmitInput): Promise<EmitResult> {
         message: error instanceof Error ? error.message : String(error),
       }),
     );
-    return { status: "skipped", reason: "invalid" };
+    return { status: "skipped", reason: "error" };
   }
 }

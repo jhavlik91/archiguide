@@ -1288,6 +1288,9 @@ model Notification {
 
   @@index([recipientUserId, state])
   @@index([recipientUserId, lastEventAt])
+  // Dedup navíc vynucuje ČÁSTEČNÝ unikátní index (recipientUserId, dedupeKey)
+  // WHERE state = 'unread' — Prisma ho neumí vyjádřit, drží ho ruční migrace
+  // `notification_dedup_unique_unread` (kolizi P2002 řeší createOrBumpNotification).
   @@index([recipientUserId, dedupeKey])
   @@map("notifications")
 }
