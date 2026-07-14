@@ -70,9 +70,18 @@ test.describe("Messaging — přílohy (T031)", () => {
     await expect(thread(page).getByText("plan.png")).toBeVisible();
     await thread(page).getByRole("button", { name: "Odeslat zprávu" }).click();
 
-    // Náhled obrázku ve vlákně (inline <img> s alt = název souboru).
+    // Náhled obrázku ve vlákně (inline <img> s alt = název souboru). Na načtení
+    // se ptáme přes `naturalWidth`, ne `toBeVisible()`: náhled je 1×1 PNG bez
+    // rozměrů v atributech, takže dokud request na přílohu neskončí, má <img>
+    // nulový box a Playwright ho hlásí jako „hidden" — assertion by tak závodila
+    // s načtením obrázku (v zatíženém CI to na 5s timeout občas nevyšlo).
+    // `naturalWidth > 0` je navíc přesně to, co test tvrdí: náhled se opravdu
+    // vykreslil (rozbitý obrázek by `toBeVisible()` prošel — vykreslí alt text).
     const image = thread(page).getByRole("img", { name: "plan.png" });
-    await expect(image).toBeVisible();
+    await expect(image).toBeAttached();
+    await expect
+      .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBeGreaterThan(0);
 
     // Autorizovaná URL přílohy.
     const messageId = await latestMessageId(convId);
