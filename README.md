@@ -72,6 +72,35 @@ vlastní přístupovou logiku**.
 Storage adaptér je stejný jako u médií: `ATTACHMENT_STORAGE_DRIVER`
 (`filesystem` výchozí | `s3`), `ATTACHMENT_STORAGE_DIR` — viz `.env.example`.
 
+## Brief — editace, sdílení, export (T022)
+
+Vygenerovaný brief (T021, `/brief/[id]`) lze ručně upravovat, sdílet privátním
+odkazem a exportovat. Stav řídí automat (`zadani/08` §2):
+`draft → ready → shared`, `shared → revised → shared`, `draft → archived` —
+neplatné přechody server odmítne (`features/brief/transitions.ts`).
+
+- **Editace** (`/brief/[id]/upravit`): všechny sekce §18 formulářem (ne volný
+  text), **autosave** s debounce — nikdy neztratit rozpracované změny. Odvozená
+  pole (dostupné/chybějící podklady) se přebírají z odpovědí a editor je nemění
+  (merge je zachová). Úprava **sdíleného** briefu ho posune `shared → revised`;
+  příjemci vidí starší snapshot, dokud vlastník znovu nesdílí.
+- **Sdílení odkazem**: vygeneruje odvolatelný token (capability URL v plaintextu,
+  jen READ-ONLY přístup ke **zmrazenému snapshotu**). Sdílená stránka
+  `/sdileny-brief/[token]` je veřejná, bez přihlášení, **`noindex`**, a nikdy
+  neukazuje přesnou adresu ani soukromé přílohy. **Odvolání** token okamžitě
+  zneplatní (stránka vrací „odkaz již není platný"). Před sdílením proběhne
+  **privacy kontrola** (`zadani/12` §8): najde-li text vzor přesné adresy /
+  telefonu / e-mailu, zobrazí **neblokující** varování k vědomému potvrzení.
+- **Export** (`/brief/[id]/export`): tisknutelná stránka (tisk prohlížeče → PDF
+  stačí pro MVP). Výchozí export **neobsahuje soukromá pole** (přesná adresa);
+  zahrnou se jen s explicitním `?soukrome=1`. Tisk izoluje obsah od zbytku appky
+  přes `@media print` (viz `globals.css`).
+- **Přílohy**: brief registruje resolver kontextu pro sdílený systém příloh
+  (T023) — účastníkem kontextu je jen vlastník (brief je soukromá data).
+- Přístup (editace/sdílení/export/archivace) má **jen vlastník**; čtení sdílené
+  verze jde přes token bez přihlášení. Analytika: `brief.edited`, `brief.shared`,
+  `brief.share_revoked`, `brief.exported`, `brief.archived`.
+
 ## Zprávy (T030)
 
 Konverzace 1:1 mezi přihlášenými uživateli, textové zprávy, stav přečtení a inbox
@@ -122,6 +151,33 @@ kritická cesta) předvyplněná z jeho obsahu; jeden brief může mít víc pop
   je append-only (`RequestAuditEntry`) s aktérem a `from→to` stavem.
 - **Viditelnost** je zatím jen pole (`private` default) — anonymizaci a veřejný
   výpis řeší T025/T026; reakce T027, matching T028.
+
+## Vyhledávání profesionálů (T034)
+
+Veřejný katalog a fulltextové vyhledávání profesionálů na `/profesionalove` —
+bez externího enginu, přes Postgres `tsvector`. Hledá se v headline, biu,
+specializacích, názvech profesí i názvech **publikovaných** portfolio projektů.
+
+- **Diakritika nerozhoduje** — `unaccent` na obou stranách, takže „zámečník"
+  i „zamecnik" vrací stejné výsledky. Dotaz je prefixový (`slovo:*`) a bezpečně
+  escapovaný: z uživatelského vstupu se berou jen alfanumerické tokeny, žádný
+  `to_tsquery` operátor se z něj neprovede.
+- **Synonyma profesí** z taxonomie (T005): „projektant" najde i profil s profesí
+  „projektant pozemních staveb", i když ji nemá doslovně v textu.
+- **Filtry** (profese, region/lokalita, specializace, ověřený účet) a **řazení**
+  (relevance / nejnovější) jsou **URL-persistované** — sdílitelné a SEO
+  indexovatelné; stránkuje se kurzorem (keyset, stabilní tie-break přes `id`).
+  Neznámý slug profese se ignoruje (nezmrazí výsledky).
+- **Jen veřejné, publikované profily** aktivních uživatelů. Draft/deaktivovaný se
+  ve výsledcích nikdy neobjeví; karta nenese žádná privátní pole (adresa,
+  kontakty) a ověření uvádí přesně (badge „Ověřený telefon", ne paušální
+  „Verified"). Odpublikování profilu ho z výsledků odstraní **okamžitě** —
+  dokument se skládá za běhu z živého stavu (bez materializovaného indexu;
+  ten je připravená cesta pro škálování, viz `features/search/service.ts`).
+- **Prázdný výsledek** nekončí ve slepé uličce — nabídne konkrétní kroky
+  (rozšířit region, odebrat filtr, zkusit příbuznou profesi, zobrazit vše).
+
+Migrace T034 přidává jen rozšíření `unaccent`; nemění cizí tabulky (T007/T012).
 
 ## Požadavky
 

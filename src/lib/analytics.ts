@@ -55,9 +55,19 @@ export type AnalyticsEvent =
   | "brief.created"
   | "brief.regenerated"
   | "brief.ready"
+  // Brief — editace, sdílení, export (T022)
+  | "brief.edited"
+  | "brief.shared"
+  | "brief.share_revoked"
+  | "brief.exported"
+  | "brief.archived"
   // Messaging — core (T030)
   | "messaging.conversation_started"
   | "messaging.message_sent"
+  // Vyhledávání profesionálů (T034)
+  | "search_performed"
+  | "search_result_clicked"
+  | "search_empty"
   // Poptávka — CRUD + stavový model (T024)
   | "request.created"
   | "request.published"
