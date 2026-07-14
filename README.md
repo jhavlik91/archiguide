@@ -72,6 +72,35 @@ vlastní přístupovou logiku**.
 Storage adaptér je stejný jako u médií: `ATTACHMENT_STORAGE_DRIVER`
 (`filesystem` výchozí | `s3`), `ATTACHMENT_STORAGE_DIR` — viz `.env.example`.
 
+## Brief — editace, sdílení, export (T022)
+
+Vygenerovaný brief (T021, `/brief/[id]`) lze ručně upravovat, sdílet privátním
+odkazem a exportovat. Stav řídí automat (`zadani/08` §2):
+`draft → ready → shared`, `shared → revised → shared`, `draft → archived` —
+neplatné přechody server odmítne (`features/brief/transitions.ts`).
+
+- **Editace** (`/brief/[id]/upravit`): všechny sekce §18 formulářem (ne volný
+  text), **autosave** s debounce — nikdy neztratit rozpracované změny. Odvozená
+  pole (dostupné/chybějící podklady) se přebírají z odpovědí a editor je nemění
+  (merge je zachová). Úprava **sdíleného** briefu ho posune `shared → revised`;
+  příjemci vidí starší snapshot, dokud vlastník znovu nesdílí.
+- **Sdílení odkazem**: vygeneruje odvolatelný token (capability URL v plaintextu,
+  jen READ-ONLY přístup ke **zmrazenému snapshotu**). Sdílená stránka
+  `/sdileny-brief/[token]` je veřejná, bez přihlášení, **`noindex`**, a nikdy
+  neukazuje přesnou adresu ani soukromé přílohy. **Odvolání** token okamžitě
+  zneplatní (stránka vrací „odkaz již není platný"). Před sdílením proběhne
+  **privacy kontrola** (`zadani/12` §8): najde-li text vzor přesné adresy /
+  telefonu / e-mailu, zobrazí **neblokující** varování k vědomému potvrzení.
+- **Export** (`/brief/[id]/export`): tisknutelná stránka (tisk prohlížeče → PDF
+  stačí pro MVP). Výchozí export **neobsahuje soukromá pole** (přesná adresa);
+  zahrnou se jen s explicitním `?soukrome=1`. Tisk izoluje obsah od zbytku appky
+  přes `@media print` (viz `globals.css`).
+- **Přílohy**: brief registruje resolver kontextu pro sdílený systém příloh
+  (T023) — účastníkem kontextu je jen vlastník (brief je soukromá data).
+- Přístup (editace/sdílení/export/archivace) má **jen vlastník**; čtení sdílené
+  verze jde přes token bez přihlášení. Analytika: `brief.edited`, `brief.shared`,
+  `brief.share_revoked`, `brief.exported`, `brief.archived`.
+
 ## Zprávy (T030)
 
 Konverzace 1:1 mezi přihlášenými uživateli, textové zprávy, stav přečtení a inbox

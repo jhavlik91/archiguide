@@ -1099,6 +1099,25 @@ model Brief {
   status     BriefStatus     @default(draft)
   visibility BriefVisibility @default(private)
 
+  /// Token sdíleného odkazu (T022). Náhodný high-entropy identifikátor v odkazu
+  /// (capability URL) — na rozdíl od reset/pozvánka tokenů se drží v plaintextu,
+  /// aby ho vlastník mohl znovu zobrazit/zkopírovat; přístup dává jen READ-ONLY
+  /// snapshotu, který vlastník vědomě sdílel. `null` = brief není sdílený odkazem
+  /// (nikdy nebyl, nebo byl odvolán → okamžitě přestane fungovat).
+  shareToken String? @unique
+
+  /// SNAPSHOT obsahu odeslaný příjemcům při sdílení (T022). Živý `content` se dál
+  /// edituje, ale příjemci vidí tento zmrazený stav, dokud vlastník znovu nesdílí
+  /// (zadani/08 §2: `shared → revised → shared`). `null` = dosud nesdíleno.
+  sharedContent  Json?
+  /// Snapshot názvu k `sharedContent`.
+  sharedTitle    String?
+  /// Kdy vznikl aktuální sdílený snapshot (řídí „sdílená verze je starší").
+  sharedAt       DateTime?
+  /// Kdy byl odkaz naposledy odvolán (T022 § Alternative flows). Odvoláním se
+  /// `shareTokenHash` vynuluje; toto drží čas kvůli auditu a UI hlášce.
+  shareRevokedAt DateTime?
+
   /// Kdy byl obsah naposledy vygenerován z odpovědí (regenerace ho aktualizuje).
   generatedAt DateTime @default(now())
 
