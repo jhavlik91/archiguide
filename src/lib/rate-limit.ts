@@ -19,6 +19,16 @@ type Bucket = number[]; // časová razítka pokusů v aktuálním okně
 const store = new Map<string, Bucket>();
 
 /**
+ * Vypnutí limiteru pro automatizované testy: e2e sada spouští desítky citlivých
+ * akcí (registrace, login) z jedné IP a limit 5/min by ji nedeterministicky
+ * shazoval. Nastavuje pouze e2e web server (playwright.config.ts); v produkci
+ * proměnná neexistuje a limiter je vždy aktivní.
+ */
+function isDisabled(): boolean {
+  return process.env.RATE_LIMIT_DISABLED === "1";
+}
+
+/**
  * Zaznamená pokus pod daným klíčem a vrátí, zda je povolen. Volání s efektem —
  * povolený pokus se do okna započítá; zablokovaný pokus okno neprodlužuje.
  *
@@ -33,6 +43,10 @@ export function rateLimit(
   windowMs: number,
   now: number = Date.now(),
 ): RateLimitResult {
+  if (isDisabled()) {
+    return { allowed: true, remaining: limit, retryAfterMs: 0 };
+  }
+
   const windowStart = now - windowMs;
   const recent = (store.get(key) ?? []).filter((ts) => ts > windowStart);
 

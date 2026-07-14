@@ -27,5 +27,8 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // E2e sada dělá desítky registrací/loginů z jedné IP — produkční limit
+    // 5/min/IP by ji nedeterministicky shazoval (viz src/lib/rate-limit.ts).
+    env: { RATE_LIMIT_DISABLED: "1" },
   },
 });
