@@ -36,8 +36,14 @@ export type AppShellProps = {
    * feature-agnostic.
    */
   contextSwitcher?: React.ReactNode;
-  /** Unread notification count shown on the bell. */
+  /** Unread notification count shown on the default bell (fallback / stories). */
   notificationCount?: number;
+  /**
+   * Notification control rendered in the top bar. Filled by T032 with the live
+   * notification bell; when omitted the shell renders a static bell using
+   * `notificationCount` (kept for stories and areas without notifications).
+   */
+  notificationSlot?: React.ReactNode;
   user?: AppShellUser;
   /**
    * Account controls rendered next to the avatar (e.g. a sign-out button).
@@ -110,6 +116,7 @@ function AppShell({
   activeHref,
   contextSwitcher,
   notificationCount = 0,
+  notificationSlot,
   user,
   accountMenu,
   areaLabel,
@@ -200,23 +207,25 @@ function AppShell({
 
           <div className="min-w-0 flex-1">{contextSwitcher}</div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            aria-label={
-              notificationCount > 0
-                ? `Notifikace: ${notificationCount} nepřečtených`
-                : "Notifikace"
-            }
-          >
-            <Bell />
-            {notificationCount > 0 ? (
-              <span className="bg-destructive text-destructive-foreground absolute -top-0.5 -right-0.5 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-semibold">
-                {notificationCount > 99 ? "99+" : notificationCount}
-              </span>
-            ) : null}
-          </Button>
+          {notificationSlot ?? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label={
+                notificationCount > 0
+                  ? `Notifikace: ${notificationCount} nepřečtených`
+                  : "Notifikace"
+              }
+            >
+              <Bell />
+              {notificationCount > 0 ? (
+                <span className="bg-destructive text-destructive-foreground absolute -top-0.5 -right-0.5 flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-semibold">
+                  {notificationCount > 99 ? "99+" : notificationCount}
+                </span>
+              ) : null}
+            </Button>
+          )}
 
           {user ? (
             <Avatar className="size-9">

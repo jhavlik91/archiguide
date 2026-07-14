@@ -57,7 +57,10 @@ export type AnalyticsEvent =
   | "brief.ready"
   // Messaging — core (T030)
   | "messaging.conversation_started"
-  | "messaging.message_sent";
+  | "messaging.message_sent"
+  // Notifikace — event systém + in-app (T032)
+  | "notification.created"
+  | "notification.opened";
 
 export function trackEvent(
   event: AnalyticsEvent,

@@ -10,6 +10,8 @@ import { auth } from "@/auth";
 import { requirePermission } from "@/lib/session";
 import { P_ACCESS_ADMIN_AREA } from "@/lib/permissions";
 import { SignOutButton } from "@/features/auth/components/sign-out-button";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
+import { getNotificationCentre } from "@/features/notifications/queries";
 
 const ADMIN_NAV_ITEMS: AppNavItem[] = [
   { label: "Přehled", href: "/admin", icon: <LayoutDashboard /> },
@@ -25,7 +27,10 @@ export default async function AdminLayout({
   // Admin sekce: přihlášení řeší middleware, roli vynutí permission vrstva.
   // Nepřihlášený → /login, přihlášený bez role admin/moderator → 403 (T004).
   await requirePermission(P_ACCESS_ADMIN_AREA);
-  const session = await auth();
+  const [session, notifications] = await Promise.all([
+    auth(),
+    getNotificationCentre(),
+  ]);
 
   const email = session?.user?.email ?? "";
   return (
@@ -34,6 +39,7 @@ export default async function AdminLayout({
       areaLabel="Admin"
       user={{ name: session?.user?.name ?? email, email }}
       accountMenu={<SignOutButton />}
+      notificationSlot={<NotificationBell initial={notifications} />}
     >
       {children}
     </AppShell>

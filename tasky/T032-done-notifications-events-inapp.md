@@ -1,6 +1,6 @@
 # T032 — Notifikace — event systém + in-app
 
-**Track:** G (komunikace) | **Závislosti:** T004 | **Assignee:** —
+**Track:** G (komunikace) | **Závislosti:** T004 | **Assignee:** Claude
 
 ## Goal
 Doménový event systém a in-app notifikace: jednotné API, kterým ostatní domény emitují události, deduplikace, notifikační centrum. Viz `zadani/11-notifications.md`, `zadani/10-domain-entities.md` — Notification.
@@ -38,11 +38,11 @@ Bouře eventů (např. hromadné reakce) → deduplikace drží centrum použite
 Eventy: `notification_created`, `notification_opened` (bez citlivých dat v názvech — `zadani/14-metrics-analytics.md`).
 
 ## Acceptance criteria
-- [ ] Unit testy emit API: dedup, ne-notifikace vlastní akce, respektování preferencí.
-- [ ] E2E: nová zpráva (T030) → nepřečtená notifikace → klik vede do konverzace → přečteno.
-- [ ] 5 rychlých zpráv v jedné konverzaci = 1 notifikace, ne 5.
-- [ ] Notifikace zobrazuje důvod a validní odkaz do kontextu.
-- [ ] Cizí notifikace nejsou dostupné (403/404).
+- [x] Unit testy emit API: dedup, ne-notifikace vlastní akce, respektování preferencí.
+- [x] E2E: nová zpráva (T030) → nepřečtená notifikace → klik vede do konverzace → přečteno.
+- [x] 5 rychlých zpráv v jedné konverzaci = 1 notifikace, ne 5.
+- [x] Notifikace zobrazuje důvod a validní odkaz do kontextu.
+- [x] Cizí notifikace nejsou dostupné (403/404).
 
 ## Out of scope
 E-mail, digest, preference UI (T033), SMS a push (finální produkt), real-time doručení (stačí revalidace).

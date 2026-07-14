@@ -59,6 +59,7 @@ model User {
   briefs              Brief[] // T021 (owner = uživatel)
   conversations       ConversationParticipant[] // T030 (účast v konverzacích)
   sentMessages        Message[] // T030 (odeslané zprávy)
+  notifications       Notification[] // T032 (přijaté in-app notifikace)
 
   @@map("users")
 }
@@ -1216,4 +1217,77 @@ model Message {
   @@unique([conversationId, clientToken])
   @@index([conversationId, createdAt])
   @@map("messages")
+}
+
+// --- Notifikace (T032) ------------------------------------------------------
+
+/// Priorita notifikace (zadani/11 — Priority). Řídí zvýraznění v centru a
+/// (v navazujících taskech) výběr kanálů; v MVP se materializuje jen in-app.
+enum NotificationPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+/// Stav notifikace pro příjemce. `unread → read`; podporuje hromadné označení.
+enum NotificationState {
+  unread
+  read
+}
+
+/// In-app notifikace pro příjemce (T032). Vzniká VÝHRADNĚ přes jednotné emit API
+/// (`lib/notifications.ts`), které volají domény (messaging, marketplace, …) —
+/// model nezná konkrétní doménu: kontext je polymorfní (`contextType`+`contextId`,
+/// bez FK) a cíl kliknutí je uložená relativní `linkPath`.
+///
+/// Deduplikace: dokud je notifikace NEPŘEČTENÁ, opakovaný emit se stejným
+/// `dedupeKey` jen zvýší `count` a `lastEventAt` místo nového řádku (5 zpráv v
+/// jedné konverzaci = 1 nepřečtená notifikace s počtem). Po přečtení zakládá emit
+/// novou notifikaci. `lastEventAt` řadí centrum (bump ji vrátí nahoru); mazání
+/// není — přečtené zůstávají v historii.
+model Notification {
+  id String @id @default(cuid())
+
+  recipientUserId String
+  recipient       User   @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  /// Typ události z katalogu (`lib/notifications` — otevřený enum validovaný
+  /// v kódu, ne v DB, aby šel rozšířit bez migrace). Např. `new_message`.
+  eventType String
+
+  priority NotificationPriority @default(normal)
+  state    NotificationState    @default(unread)
+
+  /// Krátký titulek bez citlivého obsahu (např. „Nová zpráva"). Nikdy neobsahuje
+  /// obsah, na který příjemce nemusí mít právo (zadani/11 — Pravidla, T032 § Perm).
+  title String
+  /// Důvod, proč notifikaci příjemce dostal (zadani/11 — „uživatel musí znát důvod").
+  reason String
+  /// Cíl kliknutí — relativní cesta do kontextu (povinná). Vede na smysluplnou
+  /// stránku i když kontext mezitím zmizí (nedostupnost řeší cílová stránka).
+  linkPath String
+
+  /// Polymorfní odkaz na zdrojový kontext (bez FK — vazbu zná zdrojová doména).
+  contextType String?
+  contextId   String?
+
+  /// Klíč deduplikace (deterministický ze zdroje, např. `new_message:<convId>`).
+  dedupeKey String
+  /// Kolik událostí se do (nepřečtené) notifikace sloučilo. 1 = jediná událost.
+  count Int @default(1)
+
+  /// Kdy byla přečtena (`state = read`). NULL = nepřečtená.
+  readAt DateTime?
+  /// Čas poslední události v notifikaci (create i dedup-bump) — řadí centrum.
+  /// Oddělené od `updatedAt`, aby označení přečteno nepřerovnalo seznam.
+  lastEventAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([recipientUserId, state])
+  @@index([recipientUserId, lastEventAt])
+  @@index([recipientUserId, dedupeKey])
+  @@map("notifications")
 }
