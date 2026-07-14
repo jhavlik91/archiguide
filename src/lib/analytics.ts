@@ -55,6 +55,12 @@ export type AnalyticsEvent =
   | "brief.created"
   | "brief.regenerated"
   | "brief.ready"
+  // Brief — editace, sdílení, export (T022)
+  | "brief.edited"
+  | "brief.shared"
+  | "brief.share_revoked"
+  | "brief.exported"
+  | "brief.archived"
   // Messaging — core (T030)
   | "messaging.conversation_started"
   | "messaging.message_sent";

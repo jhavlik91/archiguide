@@ -165,3 +165,26 @@
     font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   }
 }
+
+/**
+ * Tisk (T022 — export briefu do PDF přes prohlížeč). Izoluje `.print-area` od
+ * zbytku appky (navigace, panely): při tisku je vidět jen exportovaný obsah, na
+ * bílém a přes celou šířku stránky. Ovládací prvky uvnitř se skryjí přes
+ * Tailwind `print:hidden`.
+ */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    max-width: none;
+  }
+}
