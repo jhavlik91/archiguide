@@ -60,6 +60,7 @@ model User {
   conversations       ConversationParticipant[] // T030 (účast v konverzacích)
   sentMessages        Message[] // T030 (odeslané zprávy)
   notifications       Notification[] // T032 (přijaté in-app notifikace)
+  notificationEmailDeliveries NotificationEmailDelivery[] // T033 (audit odeslaných e-mailů)
 
   @@map("users")
 }
@@ -1312,4 +1313,74 @@ model Notification {
   // `notification_dedup_unique_unread` (kolizi P2002 řeší createOrBumpNotification).
   @@index([recipientUserId, dedupeKey])
   @@map("notifications")
+
+  // Back-relace T033 (nepřidává sloupec do notifications).
+  emailDelivery NotificationEmailDelivery?
+}
+
+// ---------------------------------------------------------------------------
+// Notifikace — e-mail, preference, digest (T033)
+//
+// E-mail je best-effort kanál (in-app zůstává zdroj pravdy — zadani/11).
+// `NotificationEmailDelivery` audituje jak jednotlivé transakční e-maily
+// (1:1 na `Notification`), tak periodické digesty (bez vazby na jednu
+// notifikaci — `notificationId` je NULL, `periodKey` nese den/týden).
+// Preference (kanál per skupina událostí, frekvence e-mailu) zůstávají v
+// existujícím `User.notificationPreferences` JSON (T032) — nová migrace pro ně
+// není potřeba, jen rozšíření tvaru na aplikační vrstvě.
+// ---------------------------------------------------------------------------
+
+/// Druh odchozího e-mailu. `transactional` = jedna notifikace hned; `daily_digest`
+/// / `weekly_digest` = periodický souhrn pro uživatele s odloženou frekvencí.
+enum NotificationEmailKind {
+  transactional
+  daily_digest
+  weekly_digest
+}
+
+/// Stav doručení pro audit (T033 § States): `queued` se zapíše před pokusem o
+/// odeslání, `sent`/`failed` po pokusu. Selhání se nikdy nepropaguje do primární
+/// akce (viz `emit` v T032) — jen se tu zaznamená.
+enum NotificationEmailStatus {
+  queued
+  sent
+  failed
+}
+
+/// Audit odchozích e-mailů notifikačního systému. Transakční e-mail vzniká
+/// nejvýš jeden na `Notification` (unikátní `notificationId`, částečný index —
+/// viz migrace), takže opakovaný dedup-bump téže notifikace neposílá e-mail
+/// znovu. Digest e-maily nemají `notificationId`; idempotenci proti duplicitnímu
+/// cron běhu vynucuje částečný unikátní index `(recipientUserId, kind, periodKey)`
+/// WHERE `periodKey` NOT NULL (den/ISO týden, viz migrace).
+model NotificationEmailDelivery {
+  id String @id @default(cuid())
+
+  recipientUserId String
+  recipient       User   @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  /// Zdrojová notifikace pro transakční e-mail. NULL pro digest.
+  notificationId String?      @unique
+  notification   Notification? @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  kind   NotificationEmailKind
+  status NotificationEmailStatus @default(queued)
+
+  /// Idempotenční klíč perioda pro digest (`2026-07-14` denní, `2026-W29` týdenní).
+  /// NULL pro transakční e-mail (ten idempotenci řeší `notificationId`).
+  periodKey String?
+
+  /// Chybová zpráva providera při `status = failed` (pro audit/debug, ne pro UI).
+  error String?
+
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([recipientUserId, kind])
+  // Idempotence vynucují dva ČÁSTEČNÉ unikátní indexy (Prisma je neumí vyjádřit,
+  // drží je ruční migrace `notification_email_delivery_idempotency`):
+  //   - (notificationId) WHERE notificationId IS NOT NULL — už pokryto @unique výše
+  //     (Prisma generuje běžný unikátní index, který NULL hodnoty nekoliduje).
+  //   - (recipientUserId, kind, periodKey) WHERE periodKey IS NOT NULL.
+  @@map("notification_email_deliveries")
 }

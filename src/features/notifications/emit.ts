@@ -1,7 +1,14 @@
 import "server-only";
 
 import { trackEvent } from "@/lib/analytics";
-import { buildDedupeKey, eventDefinition, wantsInApp } from "./rules";
+import { dispatchNotificationEmail } from "./email-dispatch";
+import {
+  buildDedupeKey,
+  emailFrequency,
+  eventDefinition,
+  wantsEmail,
+  wantsInApp,
+} from "./rules";
 import {
   createOrBumpNotification,
   getNotificationPreferences,
@@ -118,6 +125,17 @@ export async function emit(input: EmitInput): Promise<EmitResult> {
         eventType: input.eventType,
         priority: notification.priority,
       });
+
+      // E-mail jen na NOVĚ vzniklou notifikaci (T033), nikdy na dedup-bump —
+      // jinak by 5 zpráv v konverzaci poslalo 5 e-mailů místo jednoho. Frekvence
+      // "daily"/"weekly" odloží doručení do digestu (cron), takže se okamžitě
+      // neposílá nic — digest čte přímo z tabulky Notification.
+      if (wantsEmail(input.eventType, prefs) && emailFrequency(prefs) === "immediate") {
+        // Best-effort: dispatchNotificationEmail nikdy nevyhodí, ale i tak ho
+        // izolujeme, aby selhání transportu nikdy nezměnilo výsledek emit().
+        await dispatchNotificationEmail(notification).catch(() => {});
+      }
+
       return { status: "created", id: notification.id };
     }
     return { status: "deduped", id: notification.id };

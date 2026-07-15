@@ -8,8 +8,10 @@
 
 import {
   EVENT_CATALOG,
+  type EmailFrequency,
   type EventDefinition,
   type NotificationChannel,
+  type NotificationGroup,
   type NotificationPreferences,
 } from "./types";
 
@@ -41,11 +43,40 @@ export function buildDedupeKey(
   return eventType;
 }
 
+/** Skupina typu události z katalogu, nebo `null` pro neznámý typ. */
+export function eventGroup(eventType: string): NotificationGroup | null {
+  return eventDefinition(eventType)?.group ?? null;
+}
+
+/**
+ * Sjednocení default kanálů přes VŠECHNY události dané skupiny — použije
+ * preferenční UI (T033) jako výchozí stav zaškrtávátek, dokud uživatel nic
+ * neuloží. Skupina obsahuje událost s e-mailem v politice (např. `new_response`
+ * v `marketplace`) → checkbox e-mailu je defaultně zapnutý, i když jiná událost
+ * stejné skupiny (`response_viewed`) e-mail v defaultu nemá. Bez toho by
+ * needitovaný formulář po prvním uložení tiše zapnul e-mail i tam, kde ho
+ * politika vůbec nenabízí (např. `messaging` — e-mail je tam jen opt-in).
+ */
+export function groupDefaultChannels(
+  group: NotificationGroup,
+): NotificationChannel[] {
+  const channels = new Set<NotificationChannel>();
+  for (const def of Object.values(EVENT_CATALOG) as EventDefinition[]) {
+    if (def.group === group) {
+      for (const channel of def.channels) channels.add(channel);
+    }
+  }
+  return [...channels];
+}
+
 /**
  * Rozhodne efektivní kanály pro událost: začne default politikou z katalogu a
- * aplikuje uživatelské preference (per-událost má přednost před globálním
- * kanálem). Preference může kanál z defaultu VYPNOUT; zapnout podmíněný kanál nad
- * rámec defaultu smí jen explicitním `true`. Neznámý typ → žádné kanály.
+ * aplikuje uživatelské preference v pořadí rostoucí specificity — globální kanál
+ * → skupina (T033 preferenční matice) → per-událost (nejvyšší přednost).
+ * Preference může kanál z defaultu VYPNOUT; zapnout podmíněný kanál nad rámec
+ * defaultu smí jen explicitním `true`. Kritická servisní událost (`critical`)
+ * má in-app vždy zapnutý bez ohledu na preferenci (T033 § Main flow bod 3).
+ * Neznámý typ → žádné kanály.
  */
 export function resolveChannels(
   eventType: string,
@@ -55,23 +86,31 @@ export function resolveChannels(
   if (!def) return [];
 
   const globalPref = prefs?.channels ?? {};
+  const groupPref = prefs?.groups?.[def.group] ?? {};
   const eventPref = prefs?.events?.[eventType] ?? {};
+
+  function effective(channel: NotificationChannel): boolean | undefined {
+    if (eventPref[channel] !== undefined) return eventPref[channel];
+    if (groupPref[channel] !== undefined) return groupPref[channel];
+    return globalPref[channel];
+  }
 
   const enabled = new Set<NotificationChannel>();
 
   // Default kanály z politiky (mohou být preferencí vypnuty).
   for (const channel of def.channels) {
-    const override = eventPref[channel] ?? globalPref[channel];
-    if (override !== false) enabled.add(channel);
+    if (effective(channel) !== false) enabled.add(channel);
   }
   // Podmíněné kanály nad rámec defaultu jen při explicitním opt-inu.
   for (const channel of [
     ...Object.keys(globalPref),
+    ...Object.keys(groupPref),
     ...Object.keys(eventPref),
   ] as NotificationChannel[]) {
-    const override = eventPref[channel] ?? globalPref[channel];
-    if (override === true) enabled.add(channel);
+    if (effective(channel) === true) enabled.add(channel);
   }
+
+  if (def.critical) enabled.add("in_app");
 
   return [...enabled];
 }
@@ -82,6 +121,21 @@ export function wantsInApp(
   prefs: NotificationPreferences | null | undefined,
 ): boolean {
   return resolveChannels(eventType, prefs).includes("in_app");
+}
+
+/** Chce příjemce tuto událost e-mailem (respektuje preference, ne frekvenci)? */
+export function wantsEmail(
+  eventType: string,
+  prefs: NotificationPreferences | null | undefined,
+): boolean {
+  return resolveChannels(eventType, prefs).includes("email");
+}
+
+/** Frekvence e-mailového kanálu; chybí-li preference, defaultně `"immediate"`. */
+export function emailFrequency(
+  prefs: NotificationPreferences | null | undefined,
+): EmailFrequency {
+  return prefs?.emailFrequency ?? "immediate";
 }
 
 /** Vyšší z dvou priorit (dedup-bump může prioritu jen zvýšit, ne snížit). */

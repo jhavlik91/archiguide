@@ -29,6 +29,11 @@ vi.mock("./service", () => ({
 const trackSpy = vi.fn();
 vi.mock("@/lib/analytics", () => ({ trackEvent: (...a: unknown[]) => trackSpy(...a) }));
 
+const dispatchEmailSpy = vi.fn().mockResolvedValue(undefined);
+vi.mock("./email-dispatch", () => ({
+  dispatchNotificationEmail: (...a: unknown[]) => dispatchEmailSpy(...a),
+}));
+
 import { emit } from "./emit";
 
 beforeEach(() => {
@@ -40,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   createSpy.mockClear();
   trackSpy.mockClear();
+  dispatchEmailSpy.mockClear();
 });
 
 const base = {
@@ -125,5 +131,41 @@ describe("emit — deduplikace a analytika", () => {
     expect(createSpy).toHaveBeenCalledWith(
       expect.objectContaining({ dedupeKey: "new_message:conversation:c1" }),
     );
+  });
+});
+
+describe("emit — e-mailový dispatch (T033)", () => {
+  const emailEvent = { ...base, eventType: "new_response" };
+
+  it("nová notifikace s e-mailem v politice a immediate frekvencí → dispatch", async () => {
+    created = true;
+    await emit(emailEvent);
+    expect(dispatchEmailSpy).toHaveBeenCalledOnce();
+  });
+
+  it("dedup-bump (created=false) → e-mail se znovu neposílá", async () => {
+    created = false;
+    await emit(emailEvent);
+    expect(dispatchEmailSpy).not.toHaveBeenCalled();
+  });
+
+  it("událost bez e-mailu v politice (new_message) → dispatch se nevolá", async () => {
+    created = true;
+    await emit(base);
+    expect(dispatchEmailSpy).not.toHaveBeenCalled();
+  });
+
+  it("preferencí vypnutý e-mail kanál → dispatch se nevolá", async () => {
+    created = true;
+    prefs = { events: { new_response: { email: false } } };
+    await emit(emailEvent);
+    expect(dispatchEmailSpy).not.toHaveBeenCalled();
+  });
+
+  it("frekvence daily/weekly odloží e-mail do digestu → dispatch se nevolá", async () => {
+    created = true;
+    prefs = { emailFrequency: "daily" };
+    await emit(emailEvent);
+    expect(dispatchEmailSpy).not.toHaveBeenCalled();
   });
 });

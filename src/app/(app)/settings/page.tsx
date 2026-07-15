@@ -5,6 +5,12 @@ import { listVerifications } from "@/features/verification/service";
 import { VerificationBadges } from "@/features/verification/components/verification-badges";
 import { VerificationPanel } from "@/features/verification/components/verification-panel";
 import type { VerificationType } from "@/features/verification/rules";
+import { getNotificationPreferences } from "@/features/notifications/service";
+import { PreferencesPanel } from "@/features/notifications/components/preferences-panel";
+import {
+  NOTIFICATION_GROUP_LABELS,
+  type NotificationGroup,
+} from "@/features/notifications/types";
 
 /** Hláška po návratu z verifikačního odkazu (`/verify`). */
 function VerifyNotice({ emailVerified, error }: { emailVerified: boolean; error?: string }) {
@@ -27,23 +33,56 @@ function VerifyNotice({ emailVerified, error }: { emailVerified: boolean; error?
   return null;
 }
 
+/** Hláška po návratu z one-click unsubscribe odkazu (`/unsubscribe`, T033). */
+function UnsubscribeNotice({ group, error }: { group?: string; error?: boolean }) {
+  if (error) {
+    return (
+      <div className="border-destructive/40 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm">
+        Odkaz pro odhlášení e-mailů je neplatný.
+      </div>
+    );
+  }
+  if (group === "digest") {
+    return (
+      <div className="border-success/40 bg-success/10 text-success-foreground rounded-lg border px-4 py-3 text-sm">
+        Periodický souhrn byl vypnut, e-maily teď chodí okamžitě.
+      </div>
+    );
+  }
+  if (group && group in NOTIFICATION_GROUP_LABELS) {
+    const label = NOTIFICATION_GROUP_LABELS[group as NotificationGroup];
+    return (
+      <div className="border-success/40 bg-success/10 text-success-foreground rounded-lg border px-4 py-3 text-sm">
+        E-maily z kategorie „{label}“ byly vypnuty.
+      </div>
+    );
+  }
+  return null;
+}
+
 /**
- * Nastavení účtu. MVP obsahuje verifikaci kontaktů (T011); další sekce doplní
- * pozdější tasky. Dostupné každému přihlášenému uživateli.
+ * Nastavení účtu. Obsahuje verifikaci kontaktů (T011) a notifikační
+ * preference (T033). Dostupné každému přihlášenému uživateli.
  */
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ emailVerified?: string; verifyError?: string }>;
+  searchParams: Promise<{
+    emailVerified?: string;
+    verifyError?: string;
+    unsubscribed?: string;
+    unsubscribeError?: string;
+  }>;
 }) {
   const params = await searchParams;
   const actor = await requireUser();
-  const [verifications, user] = await Promise.all([
+  const [verifications, user, notificationPreferences] = await Promise.all([
     listVerifications(actor.userId),
     db.user.findUnique({
       where: { id: actor.userId },
       select: { email: true },
     }),
+    getNotificationPreferences(actor.userId),
   ]);
   const session = await auth();
   const email = user?.email ?? session?.user?.email ?? "";
@@ -65,7 +104,12 @@ export default async function SettingsPage({
         emailVerified={params.emailVerified === "1"}
         error={params.verifyError}
       />
+      <UnsubscribeNotice
+        group={params.unsubscribed}
+        error={params.unsubscribeError === "1"}
+      />
       <VerificationPanel email={email} verifications={verifications} />
+      <PreferencesPanel preferences={notificationPreferences} />
     </div>
   );
 }
