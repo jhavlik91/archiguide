@@ -99,7 +99,11 @@ export type AnalyticsEvent =
   // Administrace — uživatelé a taxonomie (T035)
   | "admin_user_suspended"
   | "admin_role_changed"
-  | "admin_taxonomy_changed";
+  | "admin_taxonomy_changed"
+  // Moderace (T036, zadani/14 — Trust)
+  | "report_created"
+  | "report_actioned"
+  | "report_dismissed";
 
 export function trackEvent(
   event: AnalyticsEvent,

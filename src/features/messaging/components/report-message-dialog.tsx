@@ -19,7 +19,7 @@ import { toast } from "@/components/ui/toast";
 import {
   MESSAGE_REPORT_REASONS,
   REPORT_NOTE_MAX_LENGTH,
-  REPORT_REASON_LABEL,
+  REPORT_REASON_LABELS,
   type ReportReason,
 } from "@/features/moderation/types";
 import { reportMessage } from "../actions";
@@ -79,7 +79,7 @@ export function ReportMessageDialog({ messageId }: { messageId: string }) {
             <div key={r} className="flex items-center gap-2">
               <RadioGroupItem value={r} id={`report-reason-${r}`} />
               <Label htmlFor={`report-reason-${r}`} className="font-normal">
-                {REPORT_REASON_LABEL[r]}
+                {REPORT_REASON_LABELS[r]}
               </Label>
             </div>
           ))}

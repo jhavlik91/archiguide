@@ -38,11 +38,11 @@ Koordinované hromadné nahlášení jednoho cíle → agregace do jednoho pří
 Eventy: `report_created`, `report_actioned`, `report_dismissed`; guardrail metriky time-to-moderation (`zadani/14-metrics-analytics.md`).
 
 ## Acceptance criteria
-- [ ] E2E: uživatel nahlásí zprávu → report ve frontě → moderátor hide → obsah skryt s placeholder, reporter notifikován.
-- [ ] Unit testy stavového automatu reportu.
-- [ ] Duplicitní report se agreguje.
-- [ ] Moderátor u nahlášené zprávy nevidí celou konverzaci.
-- [ ] Každá moderační akce má auditní záznam s důvodem.
+- [x] E2E: uživatel nahlásí zprávu → report ve frontě → moderátor hide → obsah skryt s placeholder, reporter notifikován.
+- [x] Unit testy stavového automatu reportu.
+- [x] Duplicitní report se agreguje.
+- [x] Moderátor u nahlášené zprávy nevidí celou konverzaci.
+- [x] Každá moderační akce má auditní záznam s důvodem.
 
 ## Out of scope
 Automatická detekce (spam filtry, ML), appeals workflow UI (stav existuje, plné UI — finální produkt), review-specific abuse ochrany (T037), suspenze mechanika (T035 — zde jen volání).

@@ -34,6 +34,7 @@ export const NOTIFICATION_GROUPS = [
   "marketplace",
   "matching",
   "verification",
+  "moderation",
 ] as const;
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
 
@@ -43,6 +44,7 @@ export const NOTIFICATION_GROUP_LABELS: Record<NotificationGroup, string> = {
   marketplace: "Poptávky a reakce",
   matching: "Doporučení",
   verification: "Verifikace účtu",
+  moderation: "Moderace obsahu",
 };
 
 /** Frekvence e-mailových notifikací (zadani/legacy-master-spec §28.2). */
@@ -100,6 +102,15 @@ export const EVENT_CATALOG = {
     priority: "high",
     channels: ["in_app", "email"],
     group: "verification",
+    critical: true,
+  },
+  // Moderace (T036) — zásah proti obsahu je kritická servisní zpráva (nejde
+  // vypnout in-app preferencí); zpětná vazba reporterovi je běžná.
+  report_resolved: { priority: "low", channels: ["in_app"], group: "moderation" },
+  moderation_action_taken: {
+    priority: "high",
+    channels: ["in_app"],
+    group: "moderation",
     critical: true,
   },
 } as const satisfies Record<string, EventDefinition>;

@@ -69,12 +69,14 @@ model User {
   requests                    Request[] // T024 (owner = uživatel)
   requestAuditEntries         RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
   matchRecommendations        MatchRecommendation[] // T028 (kandidát doporučení)
-  reportsFiled                Report[]                    @relation("ReportsFiled") // T031 (podaná nahlášení)
   blocksInitiated             Block[]                     @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
   blocksReceived              Block[]                     @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
   requestInvites              RequestInvite[] // T025 (pozvaný profesionál k neveřejné poptávce)
   adminAuditLogs              AdminAuditLog[] // T035 (aktér admin akce)
   notificationEmailDeliveries NotificationEmailDelivery[] // T033 (audit odeslaných e-mailů)
+  reportSubmissions           ReportSubmission[] // T036 (podaná nahlášení)
+  moderationActions           ModerationAction[] // T036 (moderátor provádějící akci)
+  moderationFlagEdits         ModerationFlag[] // T036 (kdo naposledy změnil moderační stav cíle)
 
   @@map("users")
 }
@@ -1634,18 +1636,17 @@ model AdminAuditLog {
 }
 
 // ---------------------------------------------------------------------------
-// Messaging — přílohy, blokace, nahlášení (T031)
+// Messaging — přílohy a blokace (T031)
 //
-// Rozšíření messagingu (T030) o tři průřezové věci:
+// Rozšíření messagingu (T030):
 //  - Přílohy zpráv jedou přes univerzální attachment systém (T023) — nový sloupec
 //    do `messages` NEPŘIBÝVÁ. Příloha se ukládá s polymorfním kontextem
 //    (`contextType = "message"`, `contextId = <messageId>`) a viditelností
 //    `shared_in_context`; přístup mají jen účastníci konverzace (resolver
 //    registrovaný messagingem). Vazba zpráva→přílohy je tedy přes kontext, ne FK.
 //  - `Block` — směrová blokace mezi dvojicí uživatelů (blocker → blocked).
-//  - `Report` — UNIVERZÁLNÍ nahlášení obsahu. T031 ho zakládá jen pro zprávy
-//    (`targetType = message`, `state = open`); moderační frontu a další přechody
-//    stavů řeší T036 (append-only rozšíření tohoto modelu — sloupce se nemění).
+//  - Nahlášení zpráv (T031) jede přes sdílený report systém níže (T036) —
+//    `targetType = message`.
 // ---------------------------------------------------------------------------
 
 /// Směrová blokace: `blocker` zablokoval `blocked`. Existence řádku = aktivní
@@ -1671,8 +1672,17 @@ model Block {
   @@map("blocks")
 }
 
-/// Typ nahlašitelného cíle (polymorfně, bez FK — vazbu zná zdrojová doména).
-/// T031 používá jen `message`; ostatní typy zavádí dopředně pro T036.
+// --- Moderace — nahlášení obsahu (T031 + T036) --------------------------------
+//
+// Sdílený, doménově nezávislý report systém. Cíl je polymorfní (`targetType` +
+// `targetId`, BEZ FK na cizí model — zadani/16 §4.2, stejný princip jako
+// `Conversation.contextType/contextId`). Konzumující domény (profil, portfolio,
+// poptávka, zpráva — T031, recenze) jen embedují sdílenou komponentu/akci; T036
+// samo nečte ani nemění jejich modely kromě jednoho výjimečného zápisu do
+// `Message.moderationState` (pole, které si T030 samo připravilo přesně pro
+// tento účel — viz `service.ts`).
+
+/// Typ nahlášeného cíle (zadani/10 — Report; polymorfní, bez FK).
 enum ReportTargetType {
   profile
   portfolio_project
@@ -1681,7 +1691,7 @@ enum ReportTargetType {
   review
 }
 
-/// Důvod nahlášení (zadani/12 §4). Enum je stabilní zdroj pro validaci i UI.
+/// Důvod nahlášení (zadani/12 §4 — Reportable content).
 enum ReportReason {
   spam
   scam
@@ -1693,9 +1703,9 @@ enum ReportReason {
   illegal_solicitation
 }
 
-/// Stav reportu (zadani/12 §5). T031 zakládá jen `open`; přechody na další stavy
-/// (triage → review → action/dismiss → appeal → closed) řeší moderační workflow
-/// T036. Ostatní hodnoty jsou v enumu kvůli dopředné kompatibilitě.
+/// Stav řešení reportu (zadani/12 §5). `triaged`/`under_review` jsou průběžné;
+/// `actioned`/`dismissed` jsou první rozřešení; `appealed` a `closed` patří k
+/// odvolání (stav existuje, plné UI je mimo MVP scope — T036 § Out of scope).
 enum ReportState {
   open
   triaged
@@ -1706,33 +1716,118 @@ enum ReportState {
   closed
 }
 
-/// Univerzální nahlášení obsahu do moderační fronty. Vlastníkem záznamu je
-/// reporter (`reporterUserId`). Cíl je polymorfní (`targetType` + `targetId`);
-/// nahlášená zpráva = `targetType = message`, `targetId = <messageId>`. T031 jen
-/// zakládá `open` reporty; frontu, akce a auditní záznamy řeší T036 (append-only).
+/// Moderační akce nad nahlášeným obsahem (zadani/12 §6). `suspend_*` se v T036
+/// jen audituje a notifikuje — reálné vynucení (blokace přihlášení) přidá T035
+/// (T036 § Out of scope: "suspenze mechanika — zde jen volání").
+enum ModerationActionType {
+  no_action
+  warning
+  content_hide
+  content_remove
+  feature_restriction
+  suspend_temporary
+  suspend_permanent
+}
+
+/// Moderační stav cílové entity (T036 § States: `visible → hidden → visible`).
+enum ContentModerationState {
+  visible
+  hidden
+}
+
+/// Report — jeden "případ" nad konkrétním cílem. Duplicitní nahlášení téhož
+/// cíle (týmž i jiným uživatelem), dokud je případ nevyřešený, se PŘIPOJÍ sem
+/// jako další `ReportSubmission` místo založení nového řádku (T036 § Alternative
+/// flows a § Edge cases — dedupe i ochrana fronty před koordinovaným náletem).
+/// `reason`/`note` nesou hodnoty PRVNÍHO nahlášení (náhled ve frontě); plný výčet
+/// důvodů všech nahlašovatelů je v `submissions`.
 model Report {
   id String @id @default(cuid())
-
-  /// Kdo nahlásil. Nahlásit vlastní obsah nelze (kontroluje doména).
-  reporterUserId String
-  reporter       User   @relation("ReportsFiled", fields: [reporterUserId], references: [id], onDelete: Cascade)
 
   targetType ReportTargetType
   targetId   String
 
   reason ReportReason
-  /// Volitelný upřesňující popis od reportera.
   note   String?
 
-  state ReportState @default(open)
+  state      ReportState @default(open)
+  resolvedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  submissions ReportSubmission[]
+  actions     ModerationAction[]
+
   @@index([targetType, targetId])
-  @@index([state])
-  @@index([reporterUserId])
+  @@index([state, createdAt])
   @@map("reports")
+}
+
+/// Jedno konkrétní nahlášení (jeden reporter, jeden okamžik) v rámci případu.
+/// Unikát `[reportId, reporterUserId]` dělá opakované nahlášení týmž uživatelem
+/// idempotentní (T036 § Alternative flows — "ne nový záznam").
+model ReportSubmission {
+  id String @id @default(cuid())
+
+  reportId String
+  report   Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  reporterUserId String
+  reporter       User   @relation(fields: [reporterUserId], references: [id], onDelete: Cascade)
+
+  reason ReportReason
+  note   String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([reportId, reporterUserId])
+  @@index([reporterUserId])
+  @@map("report_submissions")
+}
+
+/// Auditní záznam moderační akce nad reportem (append-only, nikdy se needituje
+/// ani nemaže). `reason` je POVINNÝ důvod zásahu (T036 § acceptance criteria —
+/// "Každá moderační akce má auditní záznam s důvodem").
+model ModerationAction {
+  id String @id @default(cuid())
+
+  reportId String
+  report   Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  /// `SetNull` při smazání účtu moderátora — auditní stopa zůstává.
+  moderatorUserId String?
+  moderator       User?   @relation(fields: [moderatorUserId], references: [id], onDelete: SetNull)
+
+  actionType ModerationActionType
+  reason     String
+
+  createdAt DateTime @default(now())
+
+  @@index([reportId, createdAt])
+  @@map("moderation_actions")
+}
+
+/// Moderační stav konkrétní cílové entity, nezávislý na životním cyklu
+/// jednotlivých reportů (skrytí přežije uzavření případu; obnovení je
+/// samostatná akce — T036 § States). Klíčováno `[targetType, targetId]`, jeden
+/// řádek na cíl.
+model ModerationFlag {
+  id String @id @default(cuid())
+
+  targetType ReportTargetType
+  targetId   String
+
+  state ContentModerationState @default(visible)
+
+  updatedByUserId String?
+  updatedByUser   User?   @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([targetType, targetId])
+  @@map("moderation_flags")
 }
 
 // ---------------------------------------------------------------------------

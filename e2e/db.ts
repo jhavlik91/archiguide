@@ -5,6 +5,19 @@ import { PrismaPg } from "@prisma/adapter-pg";
 /** Kopie systémových rolí (e2e nezávisí na alias importu z `src`). */
 type Role = "client" | "professional" | "moderator" | "admin";
 
+/** Kopie číselníků moderace (T036, e2e nezávisí na alias importu z `src`). */
+type ReportTargetType =
+  "profile" | "portfolio_project" | "request" | "message" | "review";
+type ReportReason =
+  | "spam"
+  | "scam"
+  | "fake_identity"
+  | "harassment"
+  | "dangerous_advice"
+  | "copyright"
+  | "impersonation"
+  | "illegal_solicitation";
+
 /**
  * Přímý přístup do DB z e2e testů (T004) — jen pro přípravu stavu, který nelze
  * navodit přes UI (přidělení/odebrání role, jež v MVP dělá admin z T035).
@@ -174,6 +187,43 @@ export async function getNotificationIdFor(
     select: { id: true },
   });
   return row?.id ?? null;
+}
+
+// --- Moderace (T036) --------------------------------------------------------
+// Nahlašovací UI vstupní bod přidávají až konzumující domény (T031 pro zprávy).
+// E2E proto — stejně jako u konverzací výše — nahlášení seeduje přímo do DB a
+// testuje frontu, detail, moderační akci a dopad (placeholder, notifikace) přes
+// reálné admin UI.
+
+/** Založí report na zadaný cíl s jedním nahlášením (simuluje "uživatel nahlásil"). */
+export async function seedReport(params: {
+  targetType: ReportTargetType;
+  targetId: string;
+  reporterUserId: string;
+  reason?: ReportReason;
+}): Promise<string> {
+  const reason = params.reason ?? "harassment";
+  const report = await db.report.create({
+    data: {
+      targetType: params.targetType,
+      targetId: params.targetId,
+      reason,
+      submissions: {
+        create: {
+          reporterUserId: params.reporterUserId,
+          reason,
+        },
+      },
+    },
+  });
+  return report.id;
+}
+
+export async function getMessageModerationState(
+  messageId: string,
+): Promise<string> {
+  const row = await db.message.findUniqueOrThrow({ where: { id: messageId } });
+  return row.moderationState;
 }
 
 // --- Poptávka — viditelnost + anonymizace (T025) ----------------------------

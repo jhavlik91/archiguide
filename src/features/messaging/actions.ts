@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { trackEvent } from "@/lib/analytics";
 import { getAttachment } from "@/lib/attachments";
 import { softDeleteAttachment } from "@/features/attachments/service";
-import { createReport } from "@/features/moderation/service";
+import { reportContent } from "@/features/moderation/service";
 import { isMessageReportReason } from "@/features/moderation/rules";
 import { reportMessageSchema } from "@/features/moderation/validation";
 import { getActor } from "@/lib/session";
@@ -261,8 +261,9 @@ export async function unblockUser(input: unknown): Promise<SimpleResult> {
 
 /**
  * Nahlásí zprávu do moderační fronty (T031 § Main flow bod 3). Smí jen účastník
- * konverzace a jen cizí zprávu (vlastní nedává smysl). Vytvoří `Report`
- * (`targetType = message`, `state = open`); moderační workflow řeší T036.
+ * konverzace a jen cizí zprávu (vlastní nedává smysl). Zakládá se přes sdílený
+ * report systém (T036, `reportContent`) — duplicitní nahlášení otevřeného
+ * případu se agreguje; moderační workflow řeší admin fronta.
  */
 export async function reportMessage(input: unknown): Promise<ReportResult> {
   const parsed = reportMessageSchema.safeParse(input);
@@ -298,14 +299,19 @@ export async function reportMessage(input: unknown): Promise<ReportResult> {
   }
 
   try {
-    const { created } = await createReport({
+    const result = await reportContent({
       reporterUserId: actor.userId,
       targetType: "message",
       targetId: parsed.data.messageId,
       reason: parsed.data.reason,
-      note: parsed.data.note,
+      note: parsed.data.note ?? null,
     });
-    if (created) {
+    if (!result.ok) {
+      // `own_content`/`target_not_found` jsou už ošetřené výše — sem spadnou
+      // jen souběhy (zpráva mezitím zanikla apod.).
+      return { ok: false, error: "not_found", message: "Zpráva nebyla nalezena." };
+    }
+    if (!result.deduped) {
       trackEvent("messaging.message_reported", {
         messageId: parsed.data.messageId,
         reason: parsed.data.reason,
