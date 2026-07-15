@@ -9,7 +9,7 @@
  */
 
 export type ProfileStatus = "draft" | "published";
-export type UserStatus = "active" | "deactivated" | "deleted";
+export type UserStatus = "active" | "deactivated" | "suspended" | "deleted";
 
 /** Jak (a zda) se má profil vykreslit. */
 export type PublicView =

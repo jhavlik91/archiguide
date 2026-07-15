@@ -38,11 +38,16 @@ Admin nemůže zablokovat sám sebe ani odebrat poslední admin roli v systému;
 Eventy: `admin_user_suspended`, `admin_role_changed`, `admin_taxonomy_changed` (audit log je primární záznam).
 
 ## Acceptance criteria
-- [ ] Non-admin nedostane admin UI ani přes přímou URL / přímé volání akce (test na server action).
-- [ ] Blokace: uživatel se nepřihlásí, jeho veřejný profil není dostupný; odblokování vše vrátí.
-- [ ] Deaktivovaná profese zmizí z výběru v profilu, existující profily s ní zůstávají validní.
-- [ ] Každá admin akce má auditní záznam s důvodem.
-- [ ] Nelze odebrat poslední admin účet.
+- [x] Non-admin nedostane admin UI ani přes přímou URL / přímé volání akce (test na server action).
+- [x] Blokace: uživatel se nepřihlásí, jeho veřejný profil není dostupný; odblokování vše vrátí.
+- [x] Deaktivovaná profese zmizí z výběru v profilu, existující profily s ní zůstávají validní.
+- [x] Každá admin akce má auditní záznam s důvodem.
+- [x] Nelze odebrat poslední admin účet.
+
+## Implementation notes
+- `User.status` má nový stav `suspended` (odlišný od self-service `deactivated` — nejde obejít vlastní reaktivací, blokuje i Google OAuth). Veřejná viditelnost (profil, portfolio, fulltext search) už dřív všude kontrolovala `status === "active"`, takže se na ni suspenze napojila bez úprav veřejných dotazů.
+- Auditní log je nový sdílený model `AdminAuditLog` (polymorfní cíl `user | profession_category | profession`), který podle zadání §Main flow 3 znovu využije T036 pro moderační suspenzi (nezakládá vlastní log).
+- Alternative flow „blokace uživatele s aktivní poptávkou → poptávka se skryje z výpisu" se týká profesionálského „browse/matching" výpisu poptávek, který zatím žádný task neimplementoval (`features/matching` je stále jen `.gitkeep`). Až vznikne, má filtrovat vlastníka stejně jako profil/portfolio/search (`user.status === "active"`).
 
 ## Out of scope
 Moderace reportů (T036), verifikační fronta nad rámec e-mail/telefon (finální produkt), správa guide scénářů přes UI (MVP = seed, T019), správa monetizace a doporučeného obsahu (finální produkt).

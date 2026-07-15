@@ -170,6 +170,15 @@ export async function login(
 
   // Heslo sedí — rozhodni podle stavu účtu.
   if (user.status === "deleted") return invalid;
+  if (user.status === "suspended") {
+    // Admin blokace (T035) — na rozdíl od `deactivated` se nedá obejít
+    // vlastní reaktivací; odblokovat smí jen admin.
+    return {
+      ok: false,
+      error: "suspended",
+      message: "Účet je zablokovaný administrátorem. Kontaktujte podporu.",
+    };
+  }
   if (user.status === "deactivated") {
     return {
       ok: false,
@@ -178,6 +187,10 @@ export async function login(
     };
   }
 
+  await db.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
   trackEvent("auth.login", { userId: user.id });
   await signIn("credentials", {
     email,
@@ -215,7 +228,16 @@ export async function reactivateAndLogin(
     error: "invalid",
     message: "Nesprávný e-mail nebo heslo.",
   };
+  // Smazaný nebo adminem suspendovaný (T035) účet nejde touto cestou obejít —
+  // suspenzi zruší jen admin, ne vlastník hesla.
   if (!user?.credential || user.status === "deleted") return invalid;
+  if (user.status === "suspended") {
+    return {
+      ok: false,
+      error: "suspended",
+      message: "Účet je zablokovaný administrátorem. Kontaktujte podporu.",
+    };
+  }
   const passwordOk = await verifyPassword(
     parsed.data.password,
     user.credential.passwordHash,
@@ -228,6 +250,10 @@ export async function reactivateAndLogin(
       data: { status: "active" },
     });
   }
+  await db.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
   trackEvent("auth.login", { userId: user.id, reactivated: true });
   await signIn("credentials", {
     email,

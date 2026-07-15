@@ -17,4 +17,8 @@ describe("decideGoogleLink", () => {
   it("smazaný účet → zablokovat", () => {
     expect(decideGoogleLink({ status: "deleted" })).toBe("block");
   });
+
+  it("suspendovaný účet → zablokovat (nejde obejít reaktivací)", () => {
+    expect(decideGoogleLink({ status: "suspended" })).toBe("block");
+  });
 });
