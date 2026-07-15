@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
+  Globe,
   History,
   Loader2,
   Lock,
@@ -25,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
+import type { PrivacyWarningKind } from "@/features/brief/privacy";
 import {
   refineRequestAction,
   transitionRequestAction,
@@ -35,11 +37,14 @@ import {
   REQUEST_STATUS_LABELS,
   REQUEST_TYPE_LABELS,
   REQUEST_TYPES,
+  REQUEST_VISIBILITY_LABELS,
   type RequestType,
   type RequestAuditItem,
   type RequestStatus,
   type RequestView,
 } from "../types";
+import { RequestVisibilityPanel } from "./request-visibility-panel";
+import { RequestPrivacyWarningDialog } from "./privacy-warning-dialog";
 
 /** Profese nabídnutá k výběru (z briefu / z taxonomie). */
 export interface ProfessionOption {
@@ -116,8 +121,12 @@ export function RequestDetail({
           </Badge>
           <Badge variant="outline">{REQUEST_TYPE_LABELS[request.type]}</Badge>
           <Badge variant="outline">
-            <Lock className="mr-1 size-3" />
-            Soukromá
+            {request.visibility === "public" ? (
+              <Globe className="mr-1 size-3" />
+            ) : (
+              <Lock className="mr-1 size-3" />
+            )}
+            {REQUEST_VISIBILITY_LABELS[request.visibility]}
           </Badge>
           {request.editedAfterPublish ? (
             <Badge variant="secondary">
@@ -139,6 +148,9 @@ export function RequestDetail({
           </Link>
         </p>
       </div>
+
+      {/* Viditelnost je ortogonální ke stavu (T025 § States) — vždy dostupná. */}
+      <RequestVisibilityPanel request={request} />
 
       {isDraft ? (
         <DraftEditor
@@ -410,6 +422,7 @@ function PublishedView({
   const [deadline, setDeadline] = useState(
     request.deadline ? request.deadline.slice(0, 10) : "",
   );
+  const [warnings, setWarnings] = useState<PrivacyWarningKind[] | null>(null);
   const refinable = ["active", "in_discussion", "paused"].includes(
     request.status,
   );
@@ -418,19 +431,24 @@ function PublishedView({
     (slug) => professionOptions.find((p) => p.slug === slug)?.name ?? slug,
   );
 
-  function refine() {
+  function refine(confirmed: boolean) {
     startTransition(async () => {
-      const res = await refineRequestAction(request.id, {
-        budget,
-        timeline,
-        deadline,
-      });
+      const res = await refineRequestAction(
+        request.id,
+        { budget, timeline, deadline },
+        confirmed,
+      );
       if (res.ok) {
+        setWarnings(null);
         toast.success("Upřesnění uloženo.");
         router.refresh();
-      } else {
-        toast.error(res.error);
+        return;
       }
+      if ("needsConfirmation" in res) {
+        setWarnings(res.warnings);
+        return;
+      }
+      toast.error(res.error);
     });
   }
 
@@ -488,13 +506,24 @@ function PublishedView({
                 onChange={(e) => setDeadline(e.target.value)}
               />
             </div>
-            <Button variant="outline" onClick={refine} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => refine(false)}
+              disabled={pending}
+            >
               {pending ? <Loader2 className="animate-spin" /> : <Pencil />}
               Uložit upřesnění
             </Button>
           </CardContent>
         </Card>
       ) : null}
+
+      <RequestPrivacyWarningDialog
+        warnings={warnings}
+        pending={pending}
+        onCancel={() => setWarnings(null)}
+        onConfirm={() => refine(true)}
+      />
     </>
   );
 }

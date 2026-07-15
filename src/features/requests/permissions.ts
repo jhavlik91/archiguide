@@ -1,15 +1,19 @@
 /**
- * Oprávnění domény poptávky (T024). Registrují se přes `definePermission` při
- * načtení modulu (side-effect import v actions/service). Čistá vrstva (bez DB) —
- * rozhoduje jen nad `Actor` a předaným předmětem.
+ * Oprávnění domény poptávky (T024, T025). Registrují se přes `definePermission`
+ * při načtení modulu (side-effect import v actions/service). Čistá vrstva (bez
+ * DB) — rozhoduje jen nad `Actor` a předaným předmětem.
  *
  * Pravidla (T024 § Permissions; zadani/05 — „Publikovat B2C/B2B poptávku"):
- *  - VYTVOŘIT/číst/PSÁT poptávku smí JEN vlastník (admin má override — může
- *    cokoliv). Vytvoření je navázané na brief, takže audience = kdo umí brief.
+ *  - VYTVOŘIT/číst/PSÁT poptávku (PLNOU verzi) smí JEN vlastník (admin má
+ *    override — může cokoliv). Vytvoření je navázané na brief, takže audience =
+ *    kdo umí brief.
  *  - PUBLIKOVAT dle matice: návštěvník NIKDY; účet POUZE s rolí moderátor NIKDY.
  *    Jinak vlastník publikovat smí (obě persony — B2C i B2B klient — mají pro
  *    svůj typ buď „Y", nebo „C"; v MVP „C" povolujeme). Admin cokoliv.
  *  - Přechody stavů (pause/resume/award/close/cancel): jen vlastník nebo admin.
+ *  - ČÍST ANONYMIZOVANOU projekci (T025, §20.2–20.3): vlastník/admin vždy (i
+ *    draft — slouží jako náhled před publikací); jinak nikdy draft, `public`/
+ *    `shared_link` kdokoli, `private` jen pozvaný (`RequestInvite`).
  */
 
 import {
@@ -21,7 +25,7 @@ import {
   isPermissionDefined,
   isUser,
 } from "@/lib/permissions";
-import type { RequestType } from "./types";
+import type { RequestStatus, RequestType, RequestVisibility } from "./types";
 
 /** Předmět oprávnění nad konkrétní poptávkou. */
 export interface RequestSubject {
@@ -33,10 +37,22 @@ export interface RequestPublishSubject extends RequestSubject {
   type: RequestType;
 }
 
+/**
+ * Předmět čtení ANONYMIZOVANÉ projekce (T025). `isInvited` zjišťuje volající
+ * přes `isUserInvitedToRequest` (DB dotaz — permission vrstva je čistá, proto
+ * je výsledek předaný, ne dopočítaný tady).
+ */
+export interface RequestPublicReadSubject extends RequestSubject {
+  visibility: RequestVisibility;
+  status: RequestStatus;
+  isInvited: boolean;
+}
+
 export const P_REQUEST_CREATE = "requests.create";
 export const P_REQUEST_READ = "requests.read";
 export const P_REQUEST_WRITE = "requests.write";
 export const P_REQUEST_PUBLISH = "requests.publish";
+export const P_REQUEST_READ_PUBLIC = "requests.read_public";
 
 /** Je actor „pouze moderátor" (bez klient/profík/admin role)? Ten poptávku netvoří. */
 function isModeratorOnly(actor: Actor): boolean {
@@ -85,6 +101,21 @@ if (!isPermissionDefined(P_REQUEST_PUBLISH)) {
   );
 }
 
+if (!isPermissionDefined(P_REQUEST_READ_PUBLIC)) {
+  definePermission<RequestPublicReadSubject>(
+    P_REQUEST_READ_PUBLIC,
+    (actor, subject) => {
+      // Vlastník/admin vidí anonymizovanou projekci i v draftu — slouží jako
+      // náhled „takhle to uvidí profesionál" před publikací (main flow bod 6).
+      if (isOwnerOrAdmin(actor, subject)) return true;
+      // Nepublikovaná poptávka cizímu nikdy (draft = ještě nerozhodnuto).
+      if (subject.status === "draft") return false;
+      if (subject.visibility === "private") return subject.isInvited;
+      return true; // `public`/`shared_link` — kdokoli.
+    },
+  );
+}
+
 /** Smí actor vytvořit poptávku? (Návštěvníka akce pošle na registraci/login.) */
 export function canCreateRequest(actor: Actor): boolean {
   return can(actor, P_REQUEST_CREATE);
@@ -109,4 +140,12 @@ export function canPublishRequest(
   subject: RequestPublishSubject,
 ): boolean {
   return can(actor, P_REQUEST_PUBLISH, subject);
+}
+
+/** Smí actor vidět ANONYMIZOVANOU projekci poptávky (T025 §20.2–20.3)? */
+export function canReadRequestPublicView(
+  actor: Actor,
+  subject: RequestPublicReadSubject,
+): boolean {
+  return can(actor, P_REQUEST_READ_PUBLIC, subject);
 }

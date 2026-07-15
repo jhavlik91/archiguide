@@ -63,8 +63,9 @@ describe("countUnread", () => {
 });
 
 describe("sendBlockReason", () => {
-  it("blokuje odeslání vůči deaktivované/zrušené protistraně", () => {
+  it("blokuje odeslání vůči deaktivované/suspendované/zrušené protistraně", () => {
     expect(sendBlockReason(["deactivated"])).not.toBeNull();
+    expect(sendBlockReason(["suspended"])).not.toBeNull();
     expect(sendBlockReason(["deleted"])).not.toBeNull();
   });
 

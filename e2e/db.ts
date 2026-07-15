@@ -225,3 +225,19 @@ export async function getMessageModerationState(
   const row = await db.message.findUniqueOrThrow({ where: { id: messageId } });
   return row.moderationState;
 }
+
+// --- Poptávka — viditelnost + anonymizace (T025) ----------------------------
+// Pozvání konkrétního profesionála má UI vstupní bod až v T029 (matching);
+// e2e proto pozvánku seeduje přímo do DB, stejný princip jako `seedConversation`.
+
+/** Pozve profesionála k neveřejné poptávce (idempotentní). */
+export async function seedRequestInvite(
+  requestId: string,
+  invitedUserId: string,
+): Promise<void> {
+  await db.requestInvite.upsert({
+    where: { requestId_invitedUserId: { requestId, invitedUserId } },
+    create: { requestId, invitedUserId },
+    update: {},
+  });
+}

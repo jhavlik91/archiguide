@@ -38,11 +38,11 @@ Skvělé portfolio, nulová dostupnost → doporučit lze, důvod uvádí omezen
 Eventy: `match_computed`, `match_dismissed`, `match_shortlisted`.
 
 ## Acceptance criteria
-- [ ] Unit testy: profese je tvrdá podmínka; region a specializace zvyšují skóre; konflikt zájmů vyloučen.
-- [ ] Každé doporučení má ≥1 strukturovaný důvod.
-- [ ] Žádné API nevrací skóre jako procento přesnosti.
-- [ ] Prázdný výsledek vrací důvod, ne jen [].
-- [ ] Nový profesionál bez recenzí se v kandidátech objevuje.
+- [x] Unit testy: profese je tvrdá podmínka; region a specializace zvyšují skóre; konflikt zájmů vyloučen.
+- [x] Každé doporučení má ≥1 strukturovaný důvod.
+- [x] Žádné API nevrací skóre jako procento přesnosti.
+- [x] Prázdný výsledek vrací důvod, ne jen [].
+- [x] Nový profesionál bez recenzí se v kandidátech objevuje.
 
 ## Out of scope
 UI (T029), notifikace profesionálům, sponzorované pozice (monetizace — finální produkt), ML/embeddings (MVP = deterministická pravidla).
