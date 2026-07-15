@@ -77,8 +77,11 @@ test.describe("Messaging — přílohy (T031)", () => {
     // s načtením obrázku (v zatíženém CI to na 5s timeout občas nevyšlo).
     // `naturalWidth > 0` je navíc přesně to, co test tvrdí: náhled se opravdu
     // vykreslil (rozbitý obrázek by `toBeVisible()` prošel — vykreslí alt text).
+    // Delší timeout: mezi kliknutím a náhledem je celý roundtrip POST
+    // /api/messages (na CI dev serveru včetně první kompilace routy) +
+    // router.refresh() — výchozích 5 s na zatíženém CI nestačí.
     const image = thread(page).getByRole("img", { name: "plan.png" });
-    await expect(image).toBeAttached();
+    await expect(image).toBeAttached({ timeout: 15_000 });
     await expect
       .poll(() => image.evaluate((el: HTMLImageElement) => el.naturalWidth))
       .toBeGreaterThan(0);
@@ -125,7 +128,11 @@ test.describe("Messaging — blokace (T031)", () => {
     // A zablokuje B z hlavičky vlákna.
     await page.goto(`/messages/${convId}`);
     await thread(page).getByRole("button", { name: "Blokovat" }).click();
-    await expect(thread(page).getByRole("button", { name: "Odblokovat" })).toBeVisible();
+    // Delší timeout: přepnutí tlačítka čeká na server akci + router.refresh(),
+    // což na zatíženém CI dev serveru výchozích 5 s občas nestihne.
+    await expect(
+      thread(page).getByRole("button", { name: "Odblokovat" }),
+    ).toBeVisible({ timeout: 15_000 });
     expect(await blockExists(emailA, emailB)).toBe(true);
 
     // A už konverzaci nevidí v aktivním inboxu.
