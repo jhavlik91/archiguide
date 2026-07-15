@@ -86,6 +86,14 @@ describe("kurzor", () => {
       decodeListingCursor(Buffer.from("{}", "utf8").toString("base64url")),
     ).toBeNull();
   });
+
+  it("kurzor s neparsovatelným datem → null (jinak by DB dotaz spadl)", () => {
+    const raw = Buffer.from(
+      JSON.stringify({ publishedAt: "garbage", id: "abc" }),
+      "utf8",
+    ).toString("base64url");
+    expect(decodeListingCursor(raw)).toBeNull();
+  });
 });
 
 describe("hasActiveRequestFilters", () => {

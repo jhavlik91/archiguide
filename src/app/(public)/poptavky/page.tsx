@@ -112,23 +112,24 @@ export default async function RequestListingPage({
           {result.cards.length === 0 ? (
             <RequestListEmpty state={state} />
           ) : (
-            <>
-              <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {result.cards.map((card) => (
-                  <li key={card.id}>
-                    <RequestListingCard card={card} />
-                  </li>
-                ))}
-              </ul>
+            <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {result.cards.map((card) => (
+                <li key={card.id}>
+                  <RequestListingCard card={card} />
+                </li>
+              ))}
+            </ul>
+          )}
 
-              {loadMoreHref && (
-                <div className="mt-8 flex justify-center">
-                  <Button variant="outline" asChild>
-                    <Link href={loadMoreHref}>Načíst další</Link>
-                  </Button>
-                </div>
-              )}
-            </>
+          {/* I u prázdné stránky: bounded scan rozpočtového pásma mohl skončit
+              dřív, než prohledal všechno (`resumeCursor`) — pokračování nesmí
+              zmizet, jinak výpis mlčky tvrdí, že dál nic není. */}
+          {loadMoreHref && (
+            <div className="mt-8 flex justify-center">
+              <Button variant="outline" asChild>
+                <Link href={loadMoreHref}>Načíst další</Link>
+              </Button>
+            </div>
           )}
         </section>
       </div>

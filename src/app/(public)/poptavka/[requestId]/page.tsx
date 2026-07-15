@@ -29,8 +29,9 @@ import {
  * náhled před publikací, T025 main flow bod 6); jinak `public`/`shared_link`
  * kdokoli, `private` jen pozvaný (`RequestInvite`) — cizí/neexistující/
  * nepublikovaná poptávka je 404 (neprozrazuje existenci). Indexovatelný jen
- * pro skutečně veřejně čitelné poptávky (`generateMetadata`) — draft/private
- * zůstávají `noindex`.
+ * pro `public` mimo draft (`generateMetadata`) — draft/`private`/`shared_link`
+ * zůstávají `noindex` (`shared_link` je neveřejný odkaz, indexace by ho
+ * zveřejnila).
  */
 export async function generateMetadata({
   params,
@@ -40,7 +41,7 @@ export async function generateMetadata({
   const { requestId } = await params;
   const meta = await getRequestVisibilityMeta(requestId);
   const indexable =
-    meta !== null && meta.status !== "draft" && meta.visibility !== "private";
+    meta !== null && meta.status !== "draft" && meta.visibility === "public";
 
   return {
     title: "Poptávka — ArchiGuide",

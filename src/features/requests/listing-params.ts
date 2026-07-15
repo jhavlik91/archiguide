@@ -85,6 +85,9 @@ export function decodeListingCursor(value: string | null): ListingCursor | null 
       typeof parsed === "object" &&
       parsed !== null &&
       typeof (parsed as ListingCursor).publishedAt === "string" &&
+      // Neparsovatelné datum by v `buildKeysetWhere` vyrobilo Invalid Date a
+      // Prisma by spadla — poškozený kurzor musí skončit už tady jako `null`.
+      !Number.isNaN(Date.parse((parsed as ListingCursor).publishedAt)) &&
       typeof (parsed as ListingCursor).id === "string"
     ) {
       const c = parsed as ListingCursor;
