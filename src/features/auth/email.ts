@@ -1,45 +1,26 @@
 import "server-only";
 
+import { sendEmail } from "@/lib/email/transport";
+import { peekLastEmail as peekLastOutboxEmail, type OutboxEmail } from "@/lib/email/outbox";
+
 /**
- * Odesílání transakčních e-mailů pro auth flow. V produkci se napojí Resend
- * (viz TECHNICKE-ZADANI §2); v dev/testu se e-mail jen zaloguje a uloží do
- * in-memory outboxu, ze kterého ho lze přečíst přes dev-only endpoint
- * `/api/dev/outbox` (např. z e2e testu reset flow).
+ * Odesílání transakčních e-mailů pro auth flow. Transport (Resend v produkci,
+ * dev outbox jinak) řeší sdílené `@/lib/email/transport` (T033); tady zůstává
+ * jen obsah jednotlivých zpráv.
  */
 
-export type OutboxEmail = {
+async function deliver(message: {
   to: string;
   subject: string;
   body: string;
-  /** Případný akční odkaz (verifikace, reset) pro snadné čtení v dev/testu. */
   link?: string;
-  sentAt: string;
-};
-
-const isProduction = process.env.NODE_ENV === "production";
-
-// Sdílený in-memory outbox přežije jen v rámci procesu — což pro dev server
-// i Playwright (stejný proces) stačí. Klíč na `globalThis` kvůli hot-reloadu.
-const globalForOutbox = globalThis as unknown as {
-  __authOutbox?: OutboxEmail[];
-};
-const outbox: OutboxEmail[] = (globalForOutbox.__authOutbox ??= []);
-
-async function deliver(message: Omit<OutboxEmail, "sentAt">): Promise<void> {
-  const email: OutboxEmail = { ...message, sentAt: new Date().toISOString() };
-
-  if (isProduction) {
-    // TODO(T033): odeslat přes Resend. Zatím jen log, aby se nic neztratilo.
-    console.info(
-      JSON.stringify({ type: "email", to: email.to, subject: email.subject }),
-    );
-    return;
-  }
-
-  outbox.push(email);
-  console.info(
-    `\n📧 [dev e-mail] → ${email.to}\n   ${email.subject}\n   ${email.link ?? email.body}\n`,
-  );
+}): Promise<void> {
+  await sendEmail({
+    to: message.to,
+    subject: message.subject,
+    text: message.link ? `${message.body}\n\n${message.link}` : message.body,
+    link: message.link,
+  });
 }
 
 /** Verifikační e-mail po registraci. Zatím stub (napojení v T011/T033). */
@@ -84,7 +65,6 @@ export function sendOrgInvitationEmail(
 
 /** Dev/test-only: poslední e-mail doručený na danou adresu. */
 export function peekLastEmail(to: string): OutboxEmail | undefined {
-  if (isProduction) return undefined;
-  const normalized = to.trim().toLowerCase();
-  return [...outbox].reverse().find((e) => e.to.toLowerCase() === normalized);
+  if (process.env.NODE_ENV === "production") return undefined;
+  return peekLastOutboxEmail(to);
 }

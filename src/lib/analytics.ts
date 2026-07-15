@@ -71,6 +71,10 @@ export type AnalyticsEvent =
   // Notifikace — event systém + in-app (T032)
   | "notification.created"
   | "notification.opened"
+  // Notifikace — e-mail, preference, digest (T033)
+  | "email_sent"
+  | "email_unsubscribed"
+  | "digest_sent"
   // Vyhledávání profesionálů (T034)
   | "search_performed"
   | "search_result_clicked"
