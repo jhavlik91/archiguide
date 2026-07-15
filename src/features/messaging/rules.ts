@@ -76,6 +76,54 @@ export function sendBlockReason(
   return "Druhý účastník má zrušený nebo deaktivovaný účet, novou zprávu teď nelze odeslat.";
 }
 
+/**
+ * Neutrální hláška, když odeslání blokuje protistrana (`blocked` zablokoval
+ * odesílatele). Záměrně NEROZLIŠUJE „byl jste zablokován" vs. „nelze doručit" —
+ * volíme neutrální variantu, ať konflikt nepřiživujeme (T031 § Main flow bod 2).
+ */
+export const BLOCKED_SEND_MESSAGE =
+  "Zprávu teď nelze doručit.";
+
+/**
+ * Hláška pro odesílatele, který sám protistranu zablokoval. Tady být konkrétní
+ * můžeme (je to jeho vlastní akce) a nabídneme cestu k odblokování v nastavení.
+ */
+export const OUTGOING_BLOCK_MESSAGE =
+  "Tohoto uživatele jste zablokovali. Odblokovat můžete v nastavení.";
+
+/** Zjištěné kontaktní údaje v textu (pro nenucený privacy hint). */
+export type ContactHints = {
+  email: boolean;
+  phone: boolean;
+};
+
+// Základní detekce e-mailu (heuristika, ne validátor — hint nesmí být rušivý).
+const EMAIL_PATTERN = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i;
+
+/**
+ * Heuristická detekce telefonního čísla: 9+ číslic v souvislém úseku, kde mezi
+ * číslicemi smí být jen mezery, pomlčky, závorky, tečky nebo úvodní `+`. Krátká
+ * čísla (roky, částky) tak hint nevyvolají. Záměrně spíš přísné než ukecané.
+ */
+function hasPhoneNumber(text: string): boolean {
+  const candidates = text.match(/\+?[\d][\d\s().-]{7,}\d/g);
+  if (!candidates) return false;
+  return candidates.some((c) => (c.match(/\d/g)?.length ?? 0) >= 9);
+}
+
+/**
+ * Detekuje kontaktní údaje (e-mail / telefon) v odchozí zprávě pro NENUCENÝ hint
+ * (T031 § Main flow bod 4). Čistě informativní — odeslání NIKDY neblokuje
+ * (platforma nesmí bránit legitimní komunikaci, §27.3). Běží na klientu, aby se
+ * obsah kvůli detekci neposílal zbytečně na server.
+ */
+export function detectContactInfo(text: string): ContactHints {
+  return {
+    email: EMAIL_PATTERN.test(text),
+    phone: hasPhoneNumber(text),
+  };
+}
+
 /** Lokální část e-mailu (před `@`) jako fallback handle bez odhalení domény. */
 export function emailLocalPart(email: string): string {
   const at = email.indexOf("@");

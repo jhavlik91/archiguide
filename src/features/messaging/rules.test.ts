@@ -3,6 +3,7 @@ import {
   buildDedupeKey,
   buildIdentity,
   countUnread,
+  detectContactInfo,
   emailLocalPart,
   isParticipant,
   sendBlockReason,
@@ -70,6 +71,32 @@ describe("sendBlockReason", () => {
 
   it("aktivní protistrana odeslání nebrání", () => {
     expect(sendBlockReason(["active"])).toBeNull();
+  });
+});
+
+describe("detectContactInfo", () => {
+  it("rozpozná e-mail", () => {
+    expect(detectContactInfo("napiš na jan.novak@example.com")).toEqual({
+      email: true,
+      phone: false,
+    });
+  });
+
+  it("rozpozná telefonní číslo (9+ číslic, i s mezerami a +420)", () => {
+    expect(detectContactInfo("volej +420 777 123 456").phone).toBe(true);
+    expect(detectContactInfo("777123456").phone).toBe(true);
+  });
+
+  it("krátká čísla (rok, částka) hint nevyvolají", () => {
+    expect(detectContactInfo("rozpočet 250 000 na rok 2026").phone).toBe(false);
+    expect(detectContactInfo("ok, uvidíme se v 15:30").phone).toBe(false);
+  });
+
+  it("běžný text bez kontaktu → nic", () => {
+    expect(detectContactInfo("dobrý den, díky za nabídku")).toEqual({
+      email: false,
+      phone: false,
+    });
   });
 });
 

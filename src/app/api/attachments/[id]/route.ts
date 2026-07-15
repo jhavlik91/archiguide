@@ -1,6 +1,9 @@
 import { canAccess, getAttachment } from "@/lib/attachments";
 import { getActor } from "@/lib/session";
 import { getStorage } from "@/features/attachments/storage";
+// Side-effect: registruje resolvery kontextů příloh (např. `message` z T031),
+// aby `canAccess` uměla vyhodnotit účastnictví i v této route vrstvě.
+import "@/lib/attachment-contexts";
 
 /**
  * Autorizované stažení přílohy (T023 § Main flow bod 3). Soubory leží MIMO

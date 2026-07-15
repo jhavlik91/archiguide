@@ -64,6 +64,10 @@ export type AnalyticsEvent =
   // Messaging — core (T030)
   | "messaging.conversation_started"
   | "messaging.message_sent"
+  // Messaging — přílohy, blokace, nahlášení (T031)
+  | "messaging.attachment_sent"
+  | "messaging.conversation_blocked"
+  | "messaging.message_reported"
   // Notifikace — event systém + in-app (T032)
   | "notification.created"
   | "notification.opened"

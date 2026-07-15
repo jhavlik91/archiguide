@@ -3,37 +3,54 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Reply, Send, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  Info,
+  Loader2,
+  Paperclip,
+  Reply,
+  Send,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { type ConversationDetail, type MessageView } from "../types";
-import { sendMessage, markConversationRead } from "../actions";
+import { markConversationRead, setBlock } from "../actions";
+import { detectContactInfo } from "../rules";
 import { formatTime } from "./format";
+import { MessageAttachments } from "./message-attachments";
+import { ReportMessageDialog } from "./report-message-dialog";
 
 /** Optimistická zpráva, dokud ji server nepotvrdí (pak ji nahradí serverová). */
 type Pending = {
   clientToken: string;
   content: string;
   replyAuthor: string | null;
+  attachmentNames: string[];
 };
 
 /** Jak často se vlákno doptává na nové zprávy (bez websocketů v MVP). */
 const POLL_INTERVAL_MS = 8000;
 
 /**
- * Vlákno konverzace (T030): hlavička s kontextem, zprávy, composer s
- * optimistickým odesláním, odpovědí na zprávu a pollingem. Odeslání NIKDY
- * falešně nehlásí úspěch — při chybě zůstane text v poli k opětovnému odeslání
- * (zadani/16 §8). Obsah se vždy renderuje jako text (XSS).
+ * Vlákno konverzace (T030 + přílohy/blokace/report T031): hlavička s kontextem a
+ * blokací, zprávy s přílohami a nahlášením, composer s optimistickým odesláním
+ * (přes multipart routu `/api/messages`, aby uneslo soubory), privacy hintem a
+ * pollingem. Odeslání NIKDY falešně nehlásí úspěch — při chybě zůstane text i
+ * soubory k opětovnému odeslání (zadani/16 §8). Obsah se vždy renderuje jako text.
  */
 export function MessageThread({ detail }: { detail: ConversationDetail }) {
   const router = useRouter();
   const [input, setInput] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [replyingTo, setReplyingTo] = useState<MessageView | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [isSending, startSending] = useTransition();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const serverTokens = new Set(detail.messages.map((m) => m.clientToken));
@@ -68,41 +85,83 @@ export function MessageThread({ detail }: { detail: ConversationDetail }) {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [detail.messages.length, visiblePending.length]);
 
+  const contactHints = detectContactInfo(input);
+  const showContactHint = contactHints.email || contactHints.phone;
+
+  function addFiles(picked: FileList | null) {
+    if (!picked || picked.length === 0) return;
+    // Zhmotni soubory HNED — `picked` je živý FileList a vyprázdnění inputu níže
+    // by ho vynulovalo dřív, než se líný updater stavu spustí.
+    const added = Array.from(picked);
+    setFiles((prev) => [...prev, ...added]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function submit() {
     const content = input.trim();
-    if (!content || isSending) return;
+    if ((content.length === 0 && files.length === 0) || isSending) return;
 
     const clientToken = crypto.randomUUID();
     const reply = replyingTo;
+    const attachmentNames = files.map((f) => f.name);
+    const outgoingFiles = files;
+
     setPending((prev) => [
       ...prev,
-      { clientToken, content, replyAuthor: reply?.sender.label ?? null },
+      {
+        clientToken,
+        content,
+        replyAuthor: reply?.sender.label ?? null,
+        attachmentNames,
+      },
     ]);
     setInput("");
+    setFiles([]);
     setReplyingTo(null);
 
     startSending(async () => {
-      const res = await sendMessage({
-        conversationId: detail.id,
-        content,
-        clientToken,
-        replyToId: reply?.id,
-      });
-      if (res.ok) {
+      const form = new FormData();
+      form.set("conversationId", detail.id);
+      form.set("content", content);
+      form.set("clientToken", clientToken);
+      if (reply?.id) form.set("replyToId", reply.id);
+      for (const file of outgoingFiles) form.append("files", file);
+
+      let ok = false;
+      let errorMessage = "Zprávu se nepodařilo odeslat. Zkuste to prosím znovu.";
+      try {
+        const res = await fetch("/api/messages", { method: "POST", body: form });
+        ok = res.ok;
+        if (!ok) {
+          const data = (await res.json().catch(() => null)) as
+            | { message?: string }
+            | null;
+          if (data?.message) errorMessage = data.message;
+        }
+      } catch {
+        ok = false;
+      }
+
+      if (ok) {
         router.refresh();
       } else {
-        // Neúspěch: zahoď optimistickou zprávu a vrať text do pole k retry.
+        // Neúspěch: zahoď optimistickou zprávu a vrať obsah i soubory k retry.
         setPending((prev) => prev.filter((p) => p.clientToken !== clientToken));
         setInput((cur) => (cur.length === 0 ? content : cur));
+        setFiles((cur) => (cur.length === 0 ? outgoingFiles : cur));
         setReplyingTo(reply);
-        toast.error(res.message);
+        toast.error(errorMessage);
       }
     });
   }
 
   return (
     <div className="flex h-full flex-col">
-      {/* Hlavička s kontextem a protistranou. */}
+      {/* Hlavička s kontextem, protistranou a blokací. */}
       <header className="flex items-center gap-3 border-b px-4 py-3">
         <Button
           asChild
@@ -141,6 +200,12 @@ export function MessageThread({ detail }: { detail: ConversationDetail }) {
             </span>
           ) : null}
         </div>
+        {!detail.other.deleted ? (
+          <BlockButton
+            conversationId={detail.id}
+            blockedByMe={detail.blockedByMe}
+          />
+        ) : null}
       </header>
 
       {/* Seznam zpráv. */}
@@ -168,9 +233,19 @@ export function MessageThread({ detail }: { detail: ConversationDetail }) {
                   Odpověď: {p.replyAuthor}
                 </p>
               ) : null}
-              <p className="text-sm whitespace-pre-wrap break-words">
-                {p.content}
-              </p>
+              {p.content ? (
+                <p className="text-sm whitespace-pre-wrap break-words">
+                  {p.content}
+                </p>
+              ) : null}
+              {p.attachmentNames.map((name, i) => (
+                <p
+                  key={i}
+                  className="mt-1 flex items-center gap-1 text-xs opacity-80"
+                >
+                  <Paperclip className="size-3" /> {name}
+                </p>
+              ))}
               <span className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-80">
                 <Loader2 className="size-3 animate-spin" /> Odesílám…
               </span>
@@ -202,7 +277,58 @@ export function MessageThread({ detail }: { detail: ConversationDetail }) {
               </button>
             </div>
           ) : null}
+
+          {files.length > 0 ? (
+            <ul className="mb-2 flex flex-wrap gap-2">
+              {files.map((f, i) => (
+                <li
+                  key={i}
+                  className="bg-muted flex items-center gap-2 rounded-md px-2 py-1 text-xs"
+                >
+                  <Paperclip className="size-3 shrink-0" />
+                  <span className="max-w-40 truncate">{f.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Odebrat ${f.name}`}
+                    onClick={() => removeFile(i)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {showContactHint ? (
+            <p className="text-muted-foreground mb-2 flex items-start gap-1.5 text-xs">
+              <Info className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Sdílíte kontaktní údaj. Můžete, ale dělejte to na vlastní uvážení —
+                platnou komunikaci vám neblokujeme.
+              </span>
+            </p>
+          ) : null}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+            className="hidden"
+            onChange={(e) => addFiles(e.target.files)}
+          />
           <div className="flex items-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSending}
+              aria-label="Přiložit soubor"
+            >
+              <Paperclip className="size-4" />
+            </Button>
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -219,7 +345,9 @@ export function MessageThread({ detail }: { detail: ConversationDetail }) {
             />
             <Button
               onClick={submit}
-              disabled={isSending || input.trim().length === 0}
+              disabled={
+                isSending || (input.trim().length === 0 && files.length === 0)
+              }
               aria-label="Odeslat zprávu"
             >
               {isSending ? (
@@ -239,6 +367,55 @@ export function MessageThread({ detail }: { detail: ConversationDetail }) {
   );
 }
 
+/** Tlačítko blokace/odblokace protistrany v hlavičce vlákna (T031). */
+function BlockButton({
+  conversationId,
+  blockedByMe,
+}: {
+  conversationId: string;
+  blockedByMe: boolean;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function toggle() {
+    if (isPending) return;
+    startTransition(async () => {
+      const res = await setBlock({ conversationId, blocked: !blockedByMe });
+      if (res.ok) {
+        toast.success(
+          blockedByMe ? "Uživatel byl odblokován." : "Uživatel byl zablokován.",
+        );
+        router.refresh();
+      } else {
+        toast.error(res.message ?? "Akci se nepodařilo provést.");
+      }
+    });
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={toggle}
+      disabled={isPending}
+      className="shrink-0 gap-1.5"
+    >
+      {isPending ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : blockedByMe ? (
+        <ShieldCheck className="size-4" />
+      ) : (
+        <Ban className="size-4" />
+      )}
+      <span className="hidden sm:inline">
+        {blockedByMe ? "Odblokovat" : "Blokovat"}
+      </span>
+    </Button>
+  );
+}
+
 /** Jedna zpráva ve vlákně (bublina). Skrytou (T036) nahradí placeholder. */
 function MessageBubble({
   message,
@@ -253,8 +430,11 @@ function MessageBubble({
   return (
     <div className={cn("group flex", mine ? "justify-end" : "justify-start")}>
       <div className="flex max-w-[80%] items-end gap-1">
-        {!mine && canReply ? (
-          <ReplyButton onReply={onReply} />
+        {!mine && !message.hidden ? (
+          <div className="mb-1 flex flex-col justify-end">
+            {canReply ? <ReplyButton onReply={onReply} /> : null}
+            <ReportMessageDialog messageId={message.id} />
+          </div>
         ) : null}
         <div
           className={cn(
@@ -281,9 +461,17 @@ function MessageBubble({
               Zpráva byla skryta moderátorem.
             </p>
           ) : (
-            <p className="text-sm whitespace-pre-wrap break-words">
-              {message.content}
-            </p>
+            <>
+              {message.content ? (
+                <p className="text-sm whitespace-pre-wrap break-words">
+                  {message.content}
+                </p>
+              ) : null}
+              <MessageAttachments
+                attachments={message.attachments}
+                mine={mine}
+              />
+            </>
           )}
           <span
             className={cn(
