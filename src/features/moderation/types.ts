@@ -213,3 +213,22 @@ export interface ReportDetailView {
 }
 
 export const REPORT_QUEUE_MAX_ITEMS = 50;
+
+// --- Integrace konzumujících domén ------------------------------------------
+
+/**
+ * Důvody nabízené u nahlášení ZPRÁVY (T031). Podmnožina relevantní pro
+ * konverzace (phishing spadá pod „podvod"); ostatní důvody (autorská práva u
+ * portfolia apod.) nabízí příslušná doména. Pořadí = pořadí v UI.
+ */
+export const MESSAGE_REPORT_REASONS: readonly ReportReason[] = [
+  "spam",
+  "scam",
+  "harassment",
+  "dangerous_advice",
+  "impersonation",
+  "illegal_solicitation",
+] as const;
+
+/** Maximální délka volitelného popisu/poznámky reportu (sdílené UI + validace). */
+export const REPORT_NOTE_MAX_LENGTH = 1000;

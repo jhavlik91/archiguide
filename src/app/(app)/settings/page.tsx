@@ -5,6 +5,8 @@ import { listVerifications } from "@/features/verification/service";
 import { VerificationBadges } from "@/features/verification/components/verification-badges";
 import { VerificationPanel } from "@/features/verification/components/verification-panel";
 import type { VerificationType } from "@/features/verification/rules";
+import { getBlockedUsers } from "@/features/messaging/queries";
+import { BlockedUsersPanel } from "@/features/messaging/components/blocked-users-panel";
 
 /** Hláška po návratu z verifikačního odkazu (`/verify`). */
 function VerifyNotice({ emailVerified, error }: { emailVerified: boolean; error?: string }) {
@@ -38,12 +40,13 @@ export default async function SettingsPage({
 }) {
   const params = await searchParams;
   const actor = await requireUser();
-  const [verifications, user] = await Promise.all([
+  const [verifications, user, blockedUsers] = await Promise.all([
     listVerifications(actor.userId),
     db.user.findUnique({
       where: { id: actor.userId },
       select: { email: true },
     }),
+    getBlockedUsers(),
   ]);
   const session = await auth();
   const email = user?.email ?? session?.user?.email ?? "";
@@ -66,6 +69,10 @@ export default async function SettingsPage({
         error={params.verifyError}
       />
       <VerificationPanel email={email} verifications={verifications} />
+
+      <hr className="border-border" />
+
+      <BlockedUsersPanel blocked={blockedUsers} />
     </div>
   );
 }

@@ -10,11 +10,11 @@
 import { z } from "zod";
 import {
   MODERATION_ACTION_TYPES,
+  REPORT_NOTE_MAX_LENGTH,
   REPORT_REASONS,
   REPORT_TARGET_TYPES,
 } from "./types";
 
-const REPORT_NOTE_MAX_LENGTH = 1000;
 const ACTION_REASON_MAX_LENGTH = 1000;
 
 export const reportContentSchema = z.object({
@@ -47,3 +47,26 @@ export type ModerationActionInput = z.input<typeof moderationActionSchema>;
 export type ParsedModerationActionInput = z.output<
   typeof moderationActionSchema
 >;
+
+/** Volitelný popis reportu zprávy (ořízne bílé znaky, prázdný → undefined). */
+const messageNote = z
+  .string()
+  .trim()
+  .max(
+    REPORT_NOTE_MAX_LENGTH,
+    `Popis je příliš dlouhý (max ${REPORT_NOTE_MAX_LENGTH} znaků).`,
+  )
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : undefined));
+
+/**
+ * Nahlášení zprávy (T031): cílová zpráva + důvod z enumu + volitelný popis.
+ * Messaging akce nad tím navíc vynucuje účastnictví v konverzaci a podmnožinu
+ * důvodů pro zprávy (`isMessageReportReason`).
+ */
+export const reportMessageSchema = z.object({
+  messageId: z.string().trim().min(1),
+  reason: z.enum(REPORT_REASONS),
+  note: messageNote,
+});
+export type ReportMessageInput = z.infer<typeof reportMessageSchema>;

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { attach, toView } from "@/lib/attachments";
 import { contextSchema } from "@/features/attachments/validation";
+// Side-effect: registruje resolvery kontextů příloh (účastnictví v doménách).
+import "@/lib/attachment-contexts";
 import {
   tooLargeMessage,
   unsupportedTypeMessage,

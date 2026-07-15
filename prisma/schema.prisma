@@ -65,6 +65,8 @@ model User {
   reportSubmissions   ReportSubmission[] // T036 (podaná nahlášení)
   moderationActions   ModerationAction[] // T036 (moderátor provádějící akci)
   moderationFlagEdits ModerationFlag[] // T036 (kdo naposledy změnil moderační stav cíle)
+  blocksInitiated     Block[]                   @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
+  blocksReceived      Block[]                   @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
 
   @@map("users")
 }
@@ -1287,9 +1289,9 @@ model Notification {
 
   /// Krátký titulek bez citlivého obsahu (např. „Nová zpráva"). Nikdy neobsahuje
   /// obsah, na který příjemce nemusí mít právo (zadani/11 — Pravidla, T032 § Perm).
-  title String
+  title    String
   /// Důvod, proč notifikaci příjemce dostal (zadani/11 — „uživatel musí znát důvod").
-  reason String
+  reason   String
   /// Cíl kliknutí — relativní cesta do kontextu (povinná). Vede na smysluplnou
   /// stránku i když kontext mezitím zmizí (nedostupnost řeší cílová stránka).
   linkPath String
@@ -1301,13 +1303,13 @@ model Notification {
   /// Klíč deduplikace (deterministický ze zdroje, např. `new_message:<convId>`).
   dedupeKey String
   /// Kolik událostí se do (nepřečtené) notifikace sloučilo. 1 = jediná událost.
-  count Int @default(1)
+  count     Int    @default(1)
 
   /// Kdy byla přečtena (`state = read`). NULL = nepřečtená.
-  readAt DateTime?
+  readAt      DateTime?
   /// Čas poslední události v notifikaci (create i dedup-bump) — řadí centrum.
   /// Oddělené od `updatedAt`, aby označení přečteno nepřerovnalo seznam.
-  lastEventAt DateTime @default(now())
+  lastEventAt DateTime  @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1320,6 +1322,7 @@ model Notification {
   @@index([recipientUserId, dedupeKey])
   @@map("notifications")
 }
+
 // ---------------------------------------------------------------------------
 // Poptávka — CRUD + stavový model (T024)
 //
@@ -1399,7 +1402,7 @@ model Request {
   region String
 
   /// Rozpočet — volný text, `null` = „neuvedeno" (nevím je validní, §Validation).
-  budget String?
+  budget   String?
   /// Časový horizont — volný text, `null` = „neuvedeno".
   timeline String?
 
@@ -1457,13 +1460,50 @@ model RequestAuditEntry {
   @@map("request_audit_entries")
 }
 
-// --- Moderace — nahlášení obsahu (T036) -------------------------------------
+// ---------------------------------------------------------------------------
+// Messaging — přílohy a blokace (T031)
+//
+// Rozšíření messagingu (T030):
+//  - Přílohy zpráv jedou přes univerzální attachment systém (T023) — nový sloupec
+//    do `messages` NEPŘIBÝVÁ. Příloha se ukládá s polymorfním kontextem
+//    (`contextType = "message"`, `contextId = <messageId>`) a viditelností
+//    `shared_in_context`; přístup mají jen účastníci konverzace (resolver
+//    registrovaný messagingem). Vazba zpráva→přílohy je tedy přes kontext, ne FK.
+//  - `Block` — směrová blokace mezi dvojicí uživatelů (blocker → blocked).
+//  - Nahlášení zpráv (T031) jede přes sdílený report systém níže (T036) —
+//    `targetType = message`.
+// ---------------------------------------------------------------------------
+
+/// Směrová blokace: `blocker` zablokoval `blocked`. Existence řádku = aktivní
+/// blokace; odblokování je smazání řádku (vratné v nastavení). Blokovaný nemůže
+/// do sdílené konverzace psát; blokující ji nevidí v aktivním inboxu. Historie
+/// zůstává čitelná oběma (zadani/09 — Messaging). Unikát na dvojici brání
+/// duplicitám; opačný směr je samostatný řádek.
+model Block {
+  id String @id @default(cuid())
+
+  /// Kdo blokuje.
+  blockerUserId String
+  blocker       User   @relation("BlocksInitiated", fields: [blockerUserId], references: [id], onDelete: Cascade)
+
+  /// Koho blokuje.
+  blockedUserId String
+  blocked       User   @relation("BlocksReceived", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockedUserId])
+  @@map("blocks")
+}
+
+// --- Moderace — nahlášení obsahu (T031 + T036) --------------------------------
 //
 // Sdílený, doménově nezávislý report systém. Cíl je polymorfní (`targetType` +
 // `targetId`, BEZ FK na cizí model — zadani/16 §4.2, stejný princip jako
 // `Conversation.contextType/contextId`). Konzumující domény (profil, portfolio,
-// poptávka, zpráva, recenze) jen embedují sdílenou komponentu/akci; T036 samo
-// nečte ani nemění jejich modely kromě jednoho výjimečného zápisu do
+// poptávka, zpráva — T031, recenze) jen embedují sdílenou komponentu/akci; T036
+// samo nečte ani nemění jejich modely kromě jednoho výjimečného zápisu do
 // `Message.moderationState` (pole, které si T030 samo připravilo přesně pro
 // tento účel — viz `service.ts`).
 

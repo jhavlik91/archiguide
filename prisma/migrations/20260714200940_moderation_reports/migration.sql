@@ -1,32 +1,14 @@
--- CreateEnum
-CREATE TYPE "ReportTargetType" AS ENUM ('profile', 'portfolio_project', 'request', 'message', 'review');
-
--- CreateEnum
-CREATE TYPE "ReportReason" AS ENUM ('spam', 'scam', 'fake_identity', 'harassment', 'dangerous_advice', 'copyright', 'impersonation', 'illegal_solicitation');
-
--- CreateEnum
-CREATE TYPE "ReportState" AS ENUM ('open', 'triaged', 'under_review', 'actioned', 'dismissed', 'appealed', 'closed');
+-- T036 staví na T031 (migrace 20260713140000_messaging_attachments_block_report):
+-- tabulka "reports" a enumy ReportTargetType/ReportReason/ReportState už existují.
+-- Tahle migrace transformuje model z "jeden řádek na reportera" (T031) na
+-- "jeden PŘÍPAD na cíl + podání per reporter" (T036) a přidává moderační akce
+-- (audit) a moderační stav cíle.
 
 -- CreateEnum
 CREATE TYPE "ModerationActionType" AS ENUM ('no_action', 'warning', 'content_hide', 'content_remove', 'feature_restriction', 'suspend_temporary', 'suspend_permanent');
 
 -- CreateEnum
 CREATE TYPE "ContentModerationState" AS ENUM ('visible', 'hidden');
-
--- CreateTable
-CREATE TABLE "reports" (
-    "id" TEXT NOT NULL,
-    "targetType" "ReportTargetType" NOT NULL,
-    "targetId" TEXT NOT NULL,
-    "reason" "ReportReason" NOT NULL,
-    "note" TEXT,
-    "state" "ReportState" NOT NULL DEFAULT 'open',
-    "resolvedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "reports_pkey" PRIMARY KEY ("id")
-);
 
 -- CreateTable
 CREATE TABLE "report_submissions" (
@@ -66,12 +48,6 @@ CREATE TABLE "moderation_flags" (
 );
 
 -- CreateIndex
-CREATE INDEX "reports_targetType_targetId_idx" ON "reports"("targetType", "targetId");
-
--- CreateIndex
-CREATE INDEX "reports_state_createdAt_idx" ON "reports"("state", "createdAt");
-
--- CreateIndex
 CREATE INDEX "report_submissions_reporterUserId_idx" ON "report_submissions"("reporterUserId");
 
 -- CreateIndex
@@ -97,3 +73,21 @@ ALTER TABLE "moderation_actions" ADD CONSTRAINT "moderation_actions_moderatorUse
 
 -- AddForeignKey
 ALTER TABLE "moderation_flags" ADD CONSTRAINT "moderation_flags_updatedByUserId_fkey" FOREIGN KEY ("updatedByUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- DataMigration: každý existující T031 report (řádek per reporter) se stává
+-- samostatným případem s jedním podáním. Otevřené případy stejného cíle se
+-- vědomě NEslučují (šlo by o ztrátovou operaci nad historickými daty) —
+-- agregace platí pro nová nahlášení přes `reportContent`.
+INSERT INTO "report_submissions" ("id", "reportId", "reporterUserId", "reason", "note", "createdAt")
+SELECT gen_random_uuid()::text, r."id", r."reporterUserId", r."reason", r."note", r."createdAt"
+FROM "reports" r;
+
+-- AlterTable: reporter se přesunul do podání; případ dostává čas rozřešení.
+ALTER TABLE "reports" DROP CONSTRAINT "reports_reporterUserId_fkey";
+DROP INDEX "reports_reporterUserId_idx";
+DROP INDEX "reports_state_idx";
+ALTER TABLE "reports" DROP COLUMN "reporterUserId";
+ALTER TABLE "reports" ADD COLUMN "resolvedAt" TIMESTAMP(3);
+
+-- CreateIndex
+CREATE INDEX "reports_state_createdAt_idx" ON "reports"("state", "createdAt");
