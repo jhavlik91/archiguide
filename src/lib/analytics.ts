@@ -80,7 +80,11 @@ export type AnalyticsEvent =
   | "request.awarded"
   | "request.closed"
   | "request.cancelled"
-  | "request.expired";
+  | "request.expired"
+  // Administrace — uživatelé a taxonomie (T035)
+  | "admin_user_suspended"
+  | "admin_role_changed"
+  | "admin_taxonomy_changed";
 
 export function trackEvent(
   event: AnalyticsEvent,

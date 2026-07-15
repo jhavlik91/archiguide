@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  Tags,
   ShieldAlert,
   Flag,
   BarChart3,
@@ -16,6 +17,7 @@ import { getNotificationCentre } from "@/features/notifications/queries";
 const ADMIN_NAV_ITEMS: AppNavItem[] = [
   { label: "Přehled", href: "/admin", icon: <LayoutDashboard /> },
   { label: "Uživatelé", href: "/admin/users", icon: <Users /> },
+  { label: "Taxonomie", href: "/admin/taxonomy", icon: <Tags /> },
   { label: "Moderace", href: "/admin/moderation", icon: <ShieldAlert /> },
   { label: "Nahlášení", href: "/admin/reports", icon: <Flag /> },
   { label: "Statistiky", href: "/admin/stats", icon: <BarChart3 /> },

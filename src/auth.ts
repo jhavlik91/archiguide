@@ -51,6 +51,10 @@ async function resolveGoogleUser(
     create: { provider: "google", providerAccountId, userId: existing!.id },
     update: {},
   });
+  await db.user.update({
+    where: { id: existing!.id },
+    data: { lastLoginAt: new Date() },
+  });
   return existing!.id;
 }
 

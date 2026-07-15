@@ -19,10 +19,13 @@ datasource db {
 // Core — User (T002)
 // ---------------------------------------------------------------------------
 
-/// Životní cyklus účtu. `deleted` je terminální stav.
+/// Životní cyklus účtu. `deleted` je terminální stav. `suspended` je admin
+/// blokace (T035) — na rozdíl od `deactivated` (self-service) se z ní účet
+/// nemůže sám reaktivovat přihlášením; odblokuje jen admin.
 enum UserStatus {
   active
   deactivated
+  suspended
   deleted
 }
 
@@ -34,6 +37,9 @@ model User {
   status UserStatus @default(active)
   /// BCP-47, výchozí čeština.
   locale String     @default("cs")
+  /// Čas posledního úspěšného přihlášení — pro „poslední aktivita" v admin
+  /// detailu uživatele (T035). `null` = ještě se nepřihlásil (čerstvý účet).
+  lastLoginAt DateTime?
 
   /// Kontaktní preference (kanály, viditelnost kontaktu). Detail dořeší domény.
   contactPreferences      Json @default("{}")
@@ -62,6 +68,7 @@ model User {
   notifications       Notification[] // T032 (přijaté in-app notifikace)
   requests            Request[] // T024 (owner = uživatel)
   requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
+  adminAuditLogs      AdminAuditLog[] // T035 (aktér admin akce)
 
   @@map("users")
 }
@@ -1452,4 +1459,65 @@ model RequestAuditEntry {
 
   @@index([requestId, createdAt])
   @@map("request_audit_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Administrace — uživatelé a taxonomie (T035)
+//
+// Centrální append-only auditní log admin akcí (kdo, kdy, co, proč) — vyžaduje
+// ho T035 § Main flow 3 pro blokaci/změnu role a T036 pro moderační akce, které
+// na suspenzi jen navazují (nezakládají vlastní log). Cíl je polymorfní (bez
+// FK — kategorie/profese lze podle T005 archivovat, ne mazat, takže cíl vždy
+// existuje, ale FK bychom museli mít zvlášť na každý typ; jde o stejný vzor
+// jako `Report` bude mít v T036).
+// ---------------------------------------------------------------------------
+
+/// Sledovaná admin akce. Textové detaily (staré/nové hodnoty) nese `metadata`.
+enum AdminAuditAction {
+  user_suspended
+  user_unsuspended
+  user_role_granted
+  user_role_revoked
+  taxonomy_category_created
+  taxonomy_category_updated
+  taxonomy_category_deleted
+  taxonomy_profession_created
+  taxonomy_profession_updated
+  taxonomy_profession_deactivated
+  taxonomy_profession_reactivated
+}
+
+/// Typ cíle auditované akce.
+enum AdminAuditTargetType {
+  user
+  profession_category
+  profession
+}
+
+/// Auditní záznam admin akce (T035 § Main flow 3). Append-only, nikdy se
+/// needituje/nemaže — je to zdroj pravdy pro „kdo, kdy, co, proč".
+model AdminAuditLog {
+  id String @id @default(cuid())
+
+  /// Kdo akci provedl. `SetNull` při smazání účtu — záznam zůstává, jen ztratí
+  /// identitu (stejný vzor jako `RequestAuditEntry.actorUser`).
+  actorUserId String?
+  actorUser   User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  action     AdminAuditAction
+  targetType AdminAuditTargetType
+  targetId   String
+
+  /// Povinný u blokace a změny role (T035 § Validation); u ostatních akcí
+  /// nepovinný. Vynucuje se v server action (Zod), ne v DB.
+  reason String?
+
+  /// Doplňující strukturovaná data (např. `{ role: "admin" }`, `{ from: "draft", to: "active" }`).
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([actorUserId])
+  @@map("admin_audit_logs")
 }

@@ -58,7 +58,7 @@ export function countUnread(
 }
 
 /** Stav účtu, který blokuje příjem zpráv (protistrana není dostupná). */
-const UNAVAILABLE_STATUSES = new Set(["deactivated", "deleted"]);
+const UNAVAILABLE_STATUSES = new Set(["deactivated", "suspended", "deleted"]);
 
 /**
  * Smí divák do konverzace psát vůči protistranám s danými stavy účtu? Odeslání
