@@ -39,11 +39,11 @@ Prázdný výpis pro exotickou kombinaci filtrů → smysluplný empty state; po
 Eventy: `request_viewed`, `request_list_filtered` (viz `zadani/14-metrics-analytics.md` — professional funnel).
 
 ## Acceptance criteria
-- [ ] E2E: publikace poptávky (T024) → objeví se ve výpisu → detail zobrazí anonymizovanou verzi.
-- [ ] Filtr dle profese vrací jen odpovídající poptávky.
-- [ ] `paused` poptávka zmizí z výpisu, detail hlásí stav.
-- [ ] Návštěvník: CTA reagovat vede na přihlášení, ne na chybu.
-- [ ] Mobilní layout použitelný (filtry, karty).
+- [x] E2E: publikace poptávky (T024) → objeví se ve výpisu → detail zobrazí anonymizovanou verzi.
+- [x] Filtr dle profese vrací jen odpovídající poptávky.
+- [x] `paused` poptávka zmizí z výpisu, detail hlásí stav.
+- [x] Návštěvník: CTA reagovat vede na přihlášení, ne na chybu.
+- [x] Mobilní layout použitelný (filtry, karty).
 
 ## Out of scope
 Reakce (T027), matching/doporučování (T028–T029), fulltext vyhledávání poptávek, uložená hledání a notifikace o nových poptávkách.

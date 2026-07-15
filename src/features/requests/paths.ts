@@ -12,3 +12,8 @@
 export function publicRequestPath(requestId: string): string {
   return `/poptavka/${requestId}`;
 }
+
+/** Veřejný výpis aktivních poptávek s filtry (T026 § Main flow). */
+export function publicRequestListPath(): string {
+  return "/poptavky";
+}

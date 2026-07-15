@@ -1514,6 +1514,8 @@ model Request {
   @@index([ownerUserId])
   @@index([briefId])
   @@index([status])
+  /// Veřejný výpis (T026) čte přes status+visibility, řadí dle publishedAt.
+  @@index([status, visibility, publishedAt])
   @@map("requests")
 }
 

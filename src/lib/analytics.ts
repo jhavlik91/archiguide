@@ -92,6 +92,9 @@ export type AnalyticsEvent =
   // Poptávka — viditelnost + anonymizace (T025)
   | "request.visibility_changed"
   | "request.privacy_warning_shown"
+  // Poptávky — výpis + detail (T026) — jména dle tasku (§ Analytics), ne dotted konvence.
+  | "request_viewed"
+  | "request_list_filtered"
   // Matching engine (T028) — jména dle tasku (§ Analytics), ne dotted konvence.
   | "match_computed"
   | "match_dismissed"
