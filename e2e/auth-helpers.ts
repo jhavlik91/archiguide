@@ -65,6 +65,48 @@ export async function loginAndWait(
   await page.waitForURL("**/dashboard");
 }
 
+type OutboxEmail = {
+  to: string;
+  subject: string;
+  body: string;
+  link?: string;
+  sentAt: string;
+};
+
+/** Přečte poslední dev e-mail pro adresu z in-memory outboxu (celý objekt). */
+export async function fetchLastEmail(
+  page: Page,
+  email: string,
+): Promise<OutboxEmail> {
+  const res = await page.request.get(
+    `/api/dev/outbox?to=${encodeURIComponent(email)}`,
+  );
+  expect(res.ok()).toBeTruthy();
+  return (await res.json()) as OutboxEmail;
+}
+
+/** Počká, dokud pro adresu nedorazí (nový) dev e-mail — outbox je zpožděný vůči akci. */
+export async function waitForEmail(
+  page: Page,
+  email: string,
+  isFresh: (candidate: OutboxEmail) => boolean = () => true,
+): Promise<OutboxEmail> {
+  let latest: OutboxEmail | undefined;
+  await expect
+    .poll(async () => {
+      const res = await page.request.get(
+        `/api/dev/outbox?to=${encodeURIComponent(email)}`,
+      );
+      if (!res.ok()) return false;
+      const body = (await res.json()) as OutboxEmail;
+      if (!isFresh(body)) return false;
+      latest = body;
+      return true;
+    })
+    .toBe(true);
+  return latest as OutboxEmail;
+}
+
 /** Přečte poslední dev e-mail pro adresu z in-memory outboxu. */
 export async function fetchResetLink(
   page: Page,

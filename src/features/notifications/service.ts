@@ -6,6 +6,7 @@ import { higherPriority } from "./rules";
 import {
   NOTIFICATION_BELL_LIMIT,
   NOTIFICATION_PRIORITIES,
+  type NotificationGroup,
   type NotificationPreferences,
   type NotificationPriority,
 } from "./types";
@@ -190,6 +191,52 @@ export async function getNotificationPreferences(
     return raw as NotificationPreferences;
   }
   return {};
+}
+
+/**
+ * Uloží celé preference (T033 preferenční UI — matice skupina × kanál +
+ * frekvence e-mailu). Nahrazuje uložený JSON celý — volající (server akce)
+ * skládá výsledný objekt z formuláře, aby zápis zůstal jedním místem pravdy.
+ */
+export async function saveNotificationPreferences(
+  userId: string,
+  prefs: NotificationPreferences,
+): Promise<void> {
+  await db.user.update({
+    where: { id: userId },
+    data: { notificationPreferences: prefs as Prisma.InputJsonValue },
+  });
+}
+
+/**
+ * Vrátí frekvenci e-mailu na `immediate` (unsubscribe z periodického digestu,
+ * T033 § Alternative flows — digest sám žádnou skupinu nereprezentuje, takže
+ * se neruší kanál, ale odloženě posílané e-maily se vrátí k okamžitým).
+ */
+export async function resetEmailFrequency(userId: string): Promise<void> {
+  const prefs = await getNotificationPreferences(userId);
+  await saveNotificationPreferences(userId, { ...prefs, emailFrequency: "immediate" });
+}
+
+/**
+ * Vypne e-mailový kanál pro CELOU skupinu událostí (one-click unsubscribe z
+ * patičky e-mailu, T033 § Alternative flows). Čte-přepiš-zapiš na stejném
+ * JSON sloupci — unsubscribe je vzácná, uživatelem iniciovaná akce, souběh s
+ * jinou změnou preferencí ve stejné milisekundě není reálné riziko.
+ */
+export async function disableGroupEmail(
+  userId: string,
+  group: NotificationGroup,
+): Promise<void> {
+  const prefs = await getNotificationPreferences(userId);
+  const nextPrefs: NotificationPreferences = {
+    ...prefs,
+    groups: {
+      ...prefs.groups,
+      [group]: { ...prefs.groups?.[group], email: false },
+    },
+  };
+  await saveNotificationPreferences(userId, nextPrefs);
 }
 
 /** Existuje aktivní příjemce? (nedoručujeme zrušenému/neexistujícímu účtu). */
