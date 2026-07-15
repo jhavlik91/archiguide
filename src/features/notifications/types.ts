@@ -58,6 +58,9 @@ export const EVENT_CATALOG = {
   verification_approved: { priority: "high", channels: ["in_app", "email"] },
   verification_rejected: { priority: "high", channels: ["in_app", "email"] },
   verification_expiring: { priority: "high", channels: ["in_app", "email"] },
+  // Moderace (T036)
+  report_resolved: { priority: "low", channels: ["in_app"] },
+  moderation_action_taken: { priority: "high", channels: ["in_app"] },
 } as const satisfies Record<string, EventDefinition>;
 
 /** Typ události z katalogu (pro volající s typovou nápovědou; DB drží string). */

@@ -80,7 +80,11 @@ export type AnalyticsEvent =
   | "request.awarded"
   | "request.closed"
   | "request.cancelled"
-  | "request.expired";
+  | "request.expired"
+  // Moderace (T036, zadani/14 — Trust)
+  | "report_created"
+  | "report_actioned"
+  | "report_dismissed";
 
 export function trackEvent(
   event: AnalyticsEvent,
