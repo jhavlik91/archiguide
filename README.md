@@ -205,6 +205,38 @@ specializacích, názvech profesí i názvech **publikovaných** portfolio proje
 
 Migrace T034 přidává jen rozšíření `unaccent`; nemění cizí tabulky (T007/T012).
 
+## Matching engine (T028)
+
+Server-side doporučení profesionálů k poptávce (`MatchRecommendation`) —
+kandidátní seznam se skóre a **strukturovanými, vysvětlitelnými důvody**. MVP =
+deterministická váhová pravidla (`features/matching/config.ts`), žádné
+ML/embeddings. Bez vlastního UI (to řeší T029) — spotřebovává se přes
+`features/matching/service.ts`.
+
+- **Profese je tvrdá podmínka**: kandidát bez shodné profese se do výpočtu
+  vůbec nedostane (není jen nízko skórovaný). Kandidát dál musí mít
+  publikovaný profil, `acceptingRequests` a aktivní účet (§ Validation).
+- **Konflikt zájmů vyloučen**: vlastník poptávky sám sobě, ani žádný člen jeho
+  organizace, se nikdy nedoporučí.
+- **Skóre je čistě interní pořadí** — `features/matching/scoring.ts` sčítá
+  konfigurovatelné váhy (profese, specializace, region, podobné projekty,
+  ověření, dostupnost) a přidává drobný deterministický tie-break dle
+  kompletnosti profilu. **Nikdy se nevystavuje jako procento přesnosti**
+  (zadani/16 §5).
+- **Každé doporučení nese ≥1 strukturovaný důvod** (`{ type, detail }`) — bez
+  důvodu doporučení nevzniká. Omezená/nulová dostupnost kandidáta **penalizuje,
+  ale nevylučuje** — důvod na to výslovně upozorní.
+- **Prázdný výsledek** vrací explicitní kód důvodu, nikdy jen `[]`.
+- **Trigger**: publikace poptávky (T024, `transitionRequest`) spustí
+  `recomputeMatches` best-effort — selhání výpočtu nikdy nezablokuje samotnou
+  publikaci. Přepočet je idempotentní; existující stav doporučení
+  (`shown`/`shortlisted`/`dismissed`) se zachová, mění se jen skóre/důvody.
+  Kandidát, který přestane vyhovovat, se z doporučení vyfiltruje i bez nového
+  přepočtu (lazy read) a při dalším přepočtu se fyzicky smaže.
+- **Stavy** doporučení: `new → shown → shortlisted | dismissed` (bez zpětných
+  přechodů), `features/matching/status.ts` je zdroj pravdy.
+- **Sponzorované pozice**: pole `sponsored` existuje, v MVP vždy `false`.
+
 ## Požadavky
 
 - Node.js ≥ 20

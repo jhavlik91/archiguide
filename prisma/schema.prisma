@@ -44,24 +44,25 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Back-relace vlastněné jinými doménami (nepřidávají sloupec do `users`).
-  credential          Credential? // T003
-  authAccounts        AuthAccount[] // T003
-  passwordResetTokens PasswordResetToken[] // T003
-  roles               UserRole[] // T004
-  professionalProfile ProfessionalProfile? // T007
-  orgMemberships      OrganizationMember[] // T009
-  verifications       Verification[] // T011
-  portfolioProjects   PortfolioProject[] // T012 (owner = uživatel)
-  portfolioCoauthors  PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
-  mediaAssets         MediaAsset[] // T014 (owner = uživatel)
-  guideSessions       GuideSession[] // T017 (guide session připojená k účtu)
-  attachments         Attachment[] // T023 (owner = uživatel)
-  briefs              Brief[] // T021 (owner = uživatel)
-  conversations       ConversationParticipant[] // T030 (účast v konverzacích)
-  sentMessages        Message[] // T030 (odeslané zprávy)
-  notifications       Notification[] // T032 (přijaté in-app notifikace)
-  requests            Request[] // T024 (owner = uživatel)
-  requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
+  credential           Credential? // T003
+  authAccounts         AuthAccount[] // T003
+  passwordResetTokens  PasswordResetToken[] // T003
+  roles                UserRole[] // T004
+  professionalProfile  ProfessionalProfile? // T007
+  orgMemberships       OrganizationMember[] // T009
+  verifications        Verification[] // T011
+  portfolioProjects    PortfolioProject[] // T012 (owner = uživatel)
+  portfolioCoauthors   PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
+  mediaAssets          MediaAsset[] // T014 (owner = uživatel)
+  guideSessions        GuideSession[] // T017 (guide session připojená k účtu)
+  attachments          Attachment[] // T023 (owner = uživatel)
+  briefs               Brief[] // T021 (owner = uživatel)
+  conversations        ConversationParticipant[] // T030 (účast v konverzacích)
+  sentMessages         Message[] // T030 (odeslané zprávy)
+  notifications        Notification[] // T032 (přijaté in-app notifikace)
+  requests             Request[] // T024 (owner = uživatel)
+  requestAuditEntries  RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
+  matchRecommendations MatchRecommendation[] // T028 (kandidát doporučení)
 
   @@map("users")
 }
@@ -1284,9 +1285,9 @@ model Notification {
 
   /// Krátký titulek bez citlivého obsahu (např. „Nová zpráva"). Nikdy neobsahuje
   /// obsah, na který příjemce nemusí mít právo (zadani/11 — Pravidla, T032 § Perm).
-  title String
+  title    String
   /// Důvod, proč notifikaci příjemce dostal (zadani/11 — „uživatel musí znát důvod").
-  reason String
+  reason   String
   /// Cíl kliknutí — relativní cesta do kontextu (povinná). Vede na smysluplnou
   /// stránku i když kontext mezitím zmizí (nedostupnost řeší cílová stránka).
   linkPath String
@@ -1298,13 +1299,13 @@ model Notification {
   /// Klíč deduplikace (deterministický ze zdroje, např. `new_message:<convId>`).
   dedupeKey String
   /// Kolik událostí se do (nepřečtené) notifikace sloučilo. 1 = jediná událost.
-  count Int @default(1)
+  count     Int    @default(1)
 
   /// Kdy byla přečtena (`state = read`). NULL = nepřečtená.
-  readAt DateTime?
+  readAt      DateTime?
   /// Čas poslední události v notifikaci (create i dedup-bump) — řadí centrum.
   /// Oddělené od `updatedAt`, aby označení přečteno nepřerovnalo seznam.
-  lastEventAt DateTime @default(now())
+  lastEventAt DateTime  @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1317,6 +1318,7 @@ model Notification {
   @@index([recipientUserId, dedupeKey])
   @@map("notifications")
 }
+
 // ---------------------------------------------------------------------------
 // Poptávka — CRUD + stavový model (T024)
 //
@@ -1396,7 +1398,7 @@ model Request {
   region String
 
   /// Rozpočet — volný text, `null` = „neuvedeno" (nevím je validní, §Validation).
-  budget String?
+  budget   String?
   /// Časový horizont — volný text, `null` = „neuvedeno".
   timeline String?
 
@@ -1415,7 +1417,8 @@ model Request {
   /// (upřesnění po publikaci — main flow §3).
   editedAfterPublish Boolean @default(false)
 
-  auditEntries RequestAuditEntry[]
+  auditEntries         RequestAuditEntry[]
+  matchRecommendations MatchRecommendation[] // T028
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1452,4 +1455,66 @@ model RequestAuditEntry {
 
   @@index([requestId, createdAt])
   @@map("request_audit_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Matching engine (T028)
+//
+// Server-side doporučení profesionálů k poptávce. MVP = deterministická váhová
+// pravidla nad existujícími daty (profil, profese, region, portfolio); žádné
+// ML/embeddings. Skóre je čistě interní pořadí — NIKDY se nevystavuje jako
+// procento přesnosti (zadani/16-ai-team-execution-rules.md §5). Každé
+// doporučení nese ≥1 strukturovaný, lidsky vysvětlitelný důvod (`reasons`).
+// Konzumuje T029 (UI matching, slot) a T033 (e-mail digest, slot).
+// ---------------------------------------------------------------------------
+
+/// Životní cyklus doporučení. `new` → `shown` (zobrazeno vlastníkovi) →
+/// `shortlisted` (vybráno) | `dismissed` (odmítnuto). Bez zpětných přechodů v MVP.
+enum MatchRecommendationStatus {
+  new
+  shown
+  shortlisted
+  dismissed
+}
+
+/// Jedno doporučení profesionála k poptávce. Přepočet (`recomputeMatches`)
+/// existující řádky pro danou poptávku aktualizuje (upsert dle
+/// `[requestId, candidateUserId]`) — stavová progrese (`shown`/`shortlisted`/
+/// `dismissed`) se zachovává, mění se jen `score`/`reasons`. Kandidát, který
+/// přestane vyhovovat (odpublikování profilu, ztráta `acceptingRequests`,
+/// konflikt zájmů), se přepočtem smaže — doporučení „staženo" (§ Edge cases).
+model MatchRecommendation {
+  id String @id @default(cuid())
+
+  /// Cíl doporučení — poptávka. Zánik poptávky doporučení ruší.
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Kandidát — profesionál (profil je 1:1 s userId, viz T007).
+  candidateUserId String
+  candidateUser   User   @relation(fields: [candidateUserId], references: [id], onDelete: Cascade)
+
+  /// Interní pořadové skóre (váhový součet + drobný deterministický tie-break
+  /// dle kompletnosti profilu, viz `features/matching/scoring.ts`). Nikdy se
+  /// nevystavuje jako procento přesnosti — jen pro řazení kandidátů.
+  score Float
+
+  /// Strukturované, strojově čitelné důvody doporučení (≥1 vždy — bez důvodu
+  /// doporučení nevzniká, viz § Main flow). Tvar `MatchReason[]`
+  /// (`features/matching/types.ts`); UI (T029) z nich složí lidskou větu.
+  reasons Json
+
+  status MatchRecommendationStatus @default(new)
+
+  /// Příznak sponzorované pozice. V MVP VŽDY false — pole existuje pro budoucí
+  /// monetizaci, ale sponzorované řazení se nesmí protlačit skrytě (zadani/16 §11).
+  sponsored Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([requestId, candidateUserId])
+  @@index([requestId])
+  @@index([candidateUserId])
+  @@map("match_recommendations")
 }
