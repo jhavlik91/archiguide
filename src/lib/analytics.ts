@@ -80,7 +80,10 @@ export type AnalyticsEvent =
   | "request.awarded"
   | "request.closed"
   | "request.cancelled"
-  | "request.expired";
+  | "request.expired"
+  // Poptávka — viditelnost + anonymizace (T025)
+  | "request.visibility_changed"
+  | "request.privacy_warning_shown";
 
 export function trackEvent(
   event: AnalyticsEvent,

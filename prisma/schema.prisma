@@ -62,6 +62,7 @@ model User {
   notifications       Notification[] // T032 (přijaté in-app notifikace)
   requests            Request[] // T024 (owner = uživatel)
   requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
+  requestInvites      RequestInvite[] // T025 (pozvaný profesionál k neveřejné poptávce)
 
   @@map("users")
 }
@@ -1344,8 +1345,11 @@ enum RequestType {
   b2b
 }
 
-/// Viditelnost poptávky. Nová je vždy `private` (jen vlastník). `shared_link`/
-/// `public` a anonymizace jsou vědomá akce v T025 — tady jen pole + default.
+/// Viditelnost poptávky. Nová je vždy `private` (jen vlastník). Anonymizovaná
+/// projekce pro `public`/`shared_link` a pozvánky (`RequestInvite`) pro
+/// `private` řeší T025 (`features/requests/permissions.ts` →
+/// `requests.read_public`). UI selektor v T025 nabízí jen `private`/`public`
+/// (main flow); `shared_link` zůstává v enumu jako slot pro pozdější odkaz.
 enum RequestVisibility {
   private
   shared_link
@@ -1416,6 +1420,7 @@ model Request {
   editedAfterPublish Boolean @default(false)
 
   auditEntries RequestAuditEntry[]
+  invites      RequestInvite[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1452,4 +1457,33 @@ model RequestAuditEntry {
 
   @@index([requestId, createdAt])
   @@map("request_audit_entries")
+}
+
+/// Pozvánka konkrétního profesionála k NEVEŘEJNÉ poptávce (T025, §20.3 — „je
+/// viditelná pouze osloveným profesionálům"). Existence pozvánky je JEDINÝ
+/// způsob, jak cizí uživatel smí vidět anonymizovanou projekci `private`
+/// poptávky (`requests.read_public` v `features/requests/permissions.ts`).
+/// Vznik pozvánky (výběr kandidáta, UI) řeší T029 — tady jen datový model +
+/// idempotentní zápis, aby na něm T029 mohlo stavět.
+model RequestInvite {
+  id String @id @default(cuid())
+
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Pozvaný profesionál. Cascade — smazání účtu pozvánku ruší.
+  invitedUserId String
+  invitedUser   User   @relation(fields: [invitedUserId], references: [id], onDelete: Cascade)
+
+  /// Kdo pozval (audit). Bez relace na User — jen ID (stejný princip jako
+  /// `OrganizationInvitation.invitedByUserId`).
+  invitedByUserId String?
+
+  createdAt DateTime @default(now())
+
+  /// Opětovné pozvání téhož kandidáta je idempotentní (T029 § Edge cases).
+  @@unique([requestId, invitedUserId])
+  @@index([requestId])
+  @@index([invitedUserId])
+  @@map("request_invites")
 }
