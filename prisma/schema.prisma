@@ -63,6 +63,9 @@ model User {
   requests            Request[] // T024 (owner = uživatel)
   requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
   requestInvites      RequestInvite[] // T025 (pozvaný profesionál k neveřejné poptávce)
+  reportsFiled        Report[]                  @relation("ReportsFiled") // T031 (podaná nahlášení)
+  blocksInitiated     Block[]                   @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
+  blocksReceived      Block[]                   @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
 
   @@map("users")
 }
@@ -1285,9 +1288,9 @@ model Notification {
 
   /// Krátký titulek bez citlivého obsahu (např. „Nová zpráva"). Nikdy neobsahuje
   /// obsah, na který příjemce nemusí mít právo (zadani/11 — Pravidla, T032 § Perm).
-  title String
+  title    String
   /// Důvod, proč notifikaci příjemce dostal (zadani/11 — „uživatel musí znát důvod").
-  reason String
+  reason   String
   /// Cíl kliknutí — relativní cesta do kontextu (povinná). Vede na smysluplnou
   /// stránku i když kontext mezitím zmizí (nedostupnost řeší cílová stránka).
   linkPath String
@@ -1299,13 +1302,13 @@ model Notification {
   /// Klíč deduplikace (deterministický ze zdroje, např. `new_message:<convId>`).
   dedupeKey String
   /// Kolik událostí se do (nepřečtené) notifikace sloučilo. 1 = jediná událost.
-  count Int @default(1)
+  count     Int    @default(1)
 
   /// Kdy byla přečtena (`state = read`). NULL = nepřečtená.
-  readAt DateTime?
+  readAt      DateTime?
   /// Čas poslední události v notifikaci (create i dedup-bump) — řadí centrum.
   /// Oddělené od `updatedAt`, aby označení přečteno nepřerovnalo seznam.
-  lastEventAt DateTime @default(now())
+  lastEventAt DateTime  @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1318,6 +1321,7 @@ model Notification {
   @@index([recipientUserId, dedupeKey])
   @@map("notifications")
 }
+
 // ---------------------------------------------------------------------------
 // Poptávka — CRUD + stavový model (T024)
 //
@@ -1400,7 +1404,7 @@ model Request {
   region String
 
   /// Rozpočet — volný text, `null` = „neuvedeno" (nevím je validní, §Validation).
-  budget String?
+  budget   String?
   /// Časový horizont — volný text, `null` = „neuvedeno".
   timeline String?
 
@@ -1486,4 +1490,106 @@ model RequestInvite {
   @@index([requestId])
   @@index([invitedUserId])
   @@map("request_invites")
+}
+
+// ---------------------------------------------------------------------------
+// Messaging — přílohy, blokace, nahlášení (T031)
+//
+// Rozšíření messagingu (T030) o tři průřezové věci:
+//  - Přílohy zpráv jedou přes univerzální attachment systém (T023) — nový sloupec
+//    do `messages` NEPŘIBÝVÁ. Příloha se ukládá s polymorfním kontextem
+//    (`contextType = "message"`, `contextId = <messageId>`) a viditelností
+//    `shared_in_context`; přístup mají jen účastníci konverzace (resolver
+//    registrovaný messagingem). Vazba zpráva→přílohy je tedy přes kontext, ne FK.
+//  - `Block` — směrová blokace mezi dvojicí uživatelů (blocker → blocked).
+//  - `Report` — UNIVERZÁLNÍ nahlášení obsahu. T031 ho zakládá jen pro zprávy
+//    (`targetType = message`, `state = open`); moderační frontu a další přechody
+//    stavů řeší T036 (append-only rozšíření tohoto modelu — sloupce se nemění).
+// ---------------------------------------------------------------------------
+
+/// Směrová blokace: `blocker` zablokoval `blocked`. Existence řádku = aktivní
+/// blokace; odblokování je smazání řádku (vratné v nastavení). Blokovaný nemůže
+/// do sdílené konverzace psát; blokující ji nevidí v aktivním inboxu. Historie
+/// zůstává čitelná oběma (zadani/09 — Messaging). Unikát na dvojici brání
+/// duplicitám; opačný směr je samostatný řádek.
+model Block {
+  id String @id @default(cuid())
+
+  /// Kdo blokuje.
+  blockerUserId String
+  blocker       User   @relation("BlocksInitiated", fields: [blockerUserId], references: [id], onDelete: Cascade)
+
+  /// Koho blokuje.
+  blockedUserId String
+  blocked       User   @relation("BlocksReceived", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockedUserId])
+  @@map("blocks")
+}
+
+/// Typ nahlašitelného cíle (polymorfně, bez FK — vazbu zná zdrojová doména).
+/// T031 používá jen `message`; ostatní typy zavádí dopředně pro T036.
+enum ReportTargetType {
+  profile
+  portfolio_project
+  request
+  message
+  review
+}
+
+/// Důvod nahlášení (zadani/12 §4). Enum je stabilní zdroj pro validaci i UI.
+enum ReportReason {
+  spam
+  scam
+  fake_identity
+  harassment
+  dangerous_advice
+  copyright
+  impersonation
+  illegal_solicitation
+}
+
+/// Stav reportu (zadani/12 §5). T031 zakládá jen `open`; přechody na další stavy
+/// (triage → review → action/dismiss → appeal → closed) řeší moderační workflow
+/// T036. Ostatní hodnoty jsou v enumu kvůli dopředné kompatibilitě.
+enum ReportState {
+  open
+  triaged
+  under_review
+  actioned
+  dismissed
+  appealed
+  closed
+}
+
+/// Univerzální nahlášení obsahu do moderační fronty. Vlastníkem záznamu je
+/// reporter (`reporterUserId`). Cíl je polymorfní (`targetType` + `targetId`);
+/// nahlášená zpráva = `targetType = message`, `targetId = <messageId>`. T031 jen
+/// zakládá `open` reporty; frontu, akce a auditní záznamy řeší T036 (append-only).
+model Report {
+  id String @id @default(cuid())
+
+  /// Kdo nahlásil. Nahlásit vlastní obsah nelze (kontroluje doména).
+  reporterUserId String
+  reporter       User   @relation("ReportsFiled", fields: [reporterUserId], references: [id], onDelete: Cascade)
+
+  targetType ReportTargetType
+  targetId   String
+
+  reason ReportReason
+  /// Volitelný upřesňující popis od reportera.
+  note   String?
+
+  state ReportState @default(open)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([targetType, targetId])
+  @@index([state])
+  @@index([reporterUserId])
+  @@map("reports")
 }

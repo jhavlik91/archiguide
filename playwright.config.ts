@@ -8,6 +8,13 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  // CI jede proti `next dev` na 2jádrovém runneru — první hit každé routy
+  // platí kompilaci, takže dlouhé multi-step testy (professional-search,
+  // brief-share, organizations) občas přelezly výchozích 30 s / 5 s a sada
+  // nedeterministicky padala. Delší limity nic nezpomalují (čeká se jen na
+  // reálné selhání), jen ohraničují nejhorší případ.
+  timeout: process.env.CI ? 60_000 : 30_000,
+  expect: { timeout: process.env.CI ? 10_000 : 5_000 },
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL,

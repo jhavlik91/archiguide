@@ -6,8 +6,6 @@ import { trackEvent, type AnalyticsEvent } from "@/lib/analytics";
 import { getBriefById } from "@/features/brief/service";
 import { parseBriefContent } from "@/features/brief/content";
 import type { BriefContent } from "@/features/brief/types";
-import { isUser } from "@/lib/permissions";
-import { registerContextResolver } from "@/features/attachments/registry";
 import {
   isAuditedAction,
   nextStatus,
@@ -330,22 +328,6 @@ export async function inviteProfessionalToRequest(params: {
   });
   return { ok: true };
 }
-
-// Registruje resolver kontextu `request` pro sdílený attachment systém (T023).
-// Kontext existuje, pokud poptávka existuje; ÚČASTNÍKEM je vlastník nebo
-// pozvaný profesionál (private) — veřejný návštěvník NENÍ účastník, takže
-// `shared_in_context` přílohy se mu nezpřístupní (jen `public` — main flow
-// bod 5, „citlivé přílohy zůstávají skryté do fáze konverzace").
-registerContextResolver("request", async (contextId, actor) => {
-  const meta = await getRequestVisibilityMeta(contextId);
-  if (!meta) return { exists: false, isParticipant: false };
-  if (!isUser(actor)) return { exists: true, isParticipant: false };
-  if (actor.userId === meta.ownerUserId) {
-    return { exists: true, isParticipant: true };
-  }
-  const invited = await isUserInvitedToRequest(contextId, actor.userId);
-  return { exists: true, isParticipant: invited };
-});
 
 // --- Editace ----------------------------------------------------------------
 
