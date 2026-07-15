@@ -56,3 +56,15 @@ export const archiveSchema = z.object({
   conversationId: id,
   archived: z.boolean(),
 });
+
+/** (Od)blokování protistrany konverzace (T031). `blocked: true` = zablokovat. */
+export const blockSchema = z.object({
+  conversationId: id,
+  blocked: z.boolean(),
+});
+
+/** Odblokování konkrétního uživatele (ze seznamu v nastavení). */
+export const unblockUserSchema = z.object({ blockedUserId: id });
+
+/** Odstranění vlastní přílohy zprávy (T031 § Main flow bod 5). */
+export const deleteAttachmentSchema = z.object({ attachmentId: id });

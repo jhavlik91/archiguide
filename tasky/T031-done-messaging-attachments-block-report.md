@@ -1,6 +1,6 @@
 # T031 — Messaging — přílohy, kontext, block/report
 
-**Track:** G (komunikace) | **Závislosti:** T030, T023 | **Assignee:** —
+**Track:** G (komunikace) | **Závislosti:** T030, T023 | **Assignee:** Claude
 
 ## Goal
 Rozšíření messagingu: přílohy ve zprávách (obrázky, PDF), blokace uživatele a nahlášení zprávy. Dokončuje Package 7 (`zadani/15-release-roadmap.md`). Viz `zadani/legacy-master-spec.md` §27.2–27.3.
@@ -37,11 +37,11 @@ Příloha odstraněna po přečtení protistranou → placeholder, ne chyba (`za
 Eventy: `attachment_sent`, `conversation_blocked`, `message_reported` (viz `zadani/14-metrics-analytics.md`).
 
 ## Acceptance criteria
-- [ ] E2E: odeslání zprávy s obrázkem → protistrana vidí náhled a stáhne; třetí uživatel přílohu nestáhne.
-- [ ] Blokace: blokovaný nemůže doručit zprávu, blokující ji nevidí; odblokování obnoví komunikaci.
-- [ ] Report zprávy vytvoří záznam ve frontě s důvodem a kontextem.
-- [ ] Telefon ve zprávě vyvolá hint, ale zpráva se odešle.
-- [ ] Nedoručitelná zpráva s přílohou nezanechá osiřelou přílohu.
+- [x] E2E: odeslání zprávy s obrázkem → protistrana vidí náhled a stáhne; třetí uživatel přílohu nestáhne.
+- [x] Blokace: blokovaný nemůže doručit zprávu, blokující ji nevidí; odblokování obnoví komunikaci.
+- [x] Report zprávy vytvoří záznam ve frontě s důvodem a kontextem.
+- [x] Telefon ve zprávě vyvolá hint, ale zpráva se odešle.
+- [x] Nedoručitelná zpráva s přílohou nezanechá osiřelou přílohu.
 
 ## Out of scope
 Moderační workflow reportů (T036), zmínky/reakce/vyhledávání ve zprávách, skupinové konverzace, tvrdé skrývání kontaktů podle business pravidel (monetizace — finální produkt).

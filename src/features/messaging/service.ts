@@ -1,9 +1,16 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { getStorage } from "@/features/attachments/storage";
+import type { AllowedMimeType } from "@/features/attachments/types";
 import { buildDedupeKey } from "./rules";
-import { type ConversationContext, MESSAGES_PAGE_SIZE } from "./types";
+import {
+  type ConversationContext,
+  MESSAGE_ATTACHMENT_CONTEXT_TYPE,
+  MESSAGES_PAGE_SIZE,
+} from "./types";
 
 /**
  * Datová vrstva messagingu (T030). Jediné místo, které sahá na `db.conversation`,
@@ -186,6 +193,169 @@ export async function createMessage(
   }
 }
 
+/** Připravená příloha k odeslání se zprávou (bajty už zvalidované + sanitizované). */
+export type PreparedAttachment = {
+  bytes: Buffer;
+  mime: AllowedMimeType;
+  fileName: string;
+};
+
+/**
+ * Vloží zprávu SPOLU s přílohami atomicky (T031 § Alternative flows — zpráva s
+ * přílohou je atomická). Nejprve uloží soubory do storage (mimo transakci), pak
+ * v jedné DB transakci založí zprávu i `Attachment` řádky (kontext `message` +
+ * ID zprávy, viditelnost `shared_in_context`). Selže-li transakce, uklidí právě
+ * uložené bloby a chybu propaguje — nevznikne ani osiřelá příloha, ani polovičatá
+ * zpráva. Idempotence přes `clientToken`: opakované odeslání vrátí PŮVODNÍ zprávu
+ * (i s jejími přílohami) a nové soubory nepřidává.
+ */
+export async function createMessageWithAttachments(
+  input: CreateMessageInput & { attachments: PreparedAttachment[] },
+): Promise<{ message: MessageWithReply; created: boolean }> {
+  const existing = await db.message.findUnique({
+    where: {
+      conversationId_clientToken: {
+        conversationId: input.conversationId,
+        clientToken: input.clientToken,
+      },
+    },
+    ...messageWithReply,
+  });
+  if (existing) return { message: existing, created: false };
+
+  // Soubory ulož předem; klíče si drž pro úklid při selhání transakce.
+  const stored = await Promise.all(
+    input.attachments.map(async (a) => {
+      const storageKey = `${randomUUID()}/file`;
+      await getStorage().put(storageKey, a.bytes, a.mime);
+      return { ...a, storageKey };
+    }),
+  );
+
+  try {
+    const message = await db.$transaction(async (tx) => {
+      const created = await tx.message.create({
+        data: {
+          conversationId: input.conversationId,
+          senderUserId: input.senderUserId,
+          content: input.content,
+          clientToken: input.clientToken,
+          replyToId: input.replyToId,
+        },
+        ...messageWithReply,
+      });
+
+      if (stored.length > 0) {
+        await tx.attachment.createMany({
+          data: stored.map((s) => ({
+            ownerUserId: input.senderUserId,
+            contextType: MESSAGE_ATTACHMENT_CONTEXT_TYPE,
+            contextId: created.id,
+            storageKey: s.storageKey,
+            mimeType: s.mime,
+            fileName: s.fileName,
+            byteSize: s.bytes.byteLength,
+            visibility: "shared_in_context",
+          })),
+        });
+      }
+
+      await tx.conversation.update({
+        where: { id: input.conversationId },
+        data: { lastMessageAt: created.createdAt },
+      });
+      await tx.conversationParticipant.updateMany({
+        where: {
+          conversationId: input.conversationId,
+          userId: input.senderUserId,
+        },
+        data: { lastReadAt: created.createdAt },
+      });
+
+      return created;
+    });
+
+    return { message, created: true };
+  } catch (error) {
+    // Úklid uložených blobů, ať po selhání nezůstanou osiřelé soubory.
+    await Promise.allSettled(
+      stored.map((s) => getStorage().delete(s.storageKey)),
+    );
+    // Souběžný duplikát (stejný clientToken) → vrať existující zprávu.
+    if (isUniqueViolation(error)) {
+      const raced = await db.message.findUnique({
+        where: {
+          conversationId_clientToken: {
+            conversationId: input.conversationId,
+            clientToken: input.clientToken,
+          },
+        },
+        ...messageWithReply,
+      });
+      if (raced) return { message: raced, created: false };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Aktivní i smazané přílohy pro sadu zpráv (kontext `message`), seskupené podle
+ * `contextId` (= ID zprávy). Smazané se vrací také — konzument z nich vykreslí
+ * placeholder (T023 § Edge cases). Nejstarší první (pořadí přiložení).
+ */
+export async function attachmentsForMessages(
+  messageIds: string[],
+): Promise<Map<string, AttachmentRowForMessage[]>> {
+  const map = new Map<string, AttachmentRowForMessage[]>();
+  if (messageIds.length === 0) return map;
+
+  const rows = await db.attachment.findMany({
+    where: {
+      contextType: MESSAGE_ATTACHMENT_CONTEXT_TYPE,
+      contextId: { in: messageIds },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const row of rows) {
+    const list = map.get(row.contextId) ?? [];
+    list.push(row);
+    map.set(row.contextId, list);
+  }
+  return map;
+}
+
+export type AttachmentRowForMessage = Awaited<
+  ReturnType<typeof db.attachment.findMany>
+>[number];
+
+/**
+ * Zpráva pro moderační akci (T031 report): odesílatel + účastníci její konverzace.
+ * `null`, pokud zpráva neexistuje. Umožní ověřit, že reporter je účastník a že
+ * nenahlašuje vlastní zprávu — bez odhalení cizí konverzace.
+ */
+export async function getMessageForModeration(
+  messageId: string,
+): Promise<{
+  senderUserId: string;
+  conversationId: string;
+  participantUserIds: string[];
+} | null> {
+  const message = await db.message.findUnique({
+    where: { id: messageId },
+    select: {
+      senderUserId: true,
+      conversationId: true,
+      conversation: { select: { participants: { select: { userId: true } } } },
+    },
+  });
+  if (!message) return null;
+  return {
+    senderUserId: message.senderUserId,
+    conversationId: message.conversationId,
+    participantUserIds: message.conversation.participants.map((p) => p.userId),
+  };
+}
+
 /** Ověří, že zpráva patří do dané konverzace (guard pro reply reference). */
 export async function messageBelongsToConversation(
   messageId: string,
@@ -302,5 +472,72 @@ export function getUserStatus(
   return db.user.findUnique({
     where: { id: userId },
     select: { id: true, status: true },
+  });
+}
+
+// --- Blokace (T031) ---------------------------------------------------------
+
+/** Zablokuje `blocked` uživatelem `blocker` (idempotentní — dvojice je unikát). */
+export async function createBlock(
+  blockerUserId: string,
+  blockedUserId: string,
+): Promise<void> {
+  await db.block.upsert({
+    where: { blockerUserId_blockedUserId: { blockerUserId, blockedUserId } },
+    create: { blockerUserId, blockedUserId },
+    update: {},
+  });
+}
+
+/** Odblokuje (smaže řádek). Idempotentní — neexistující blokace nevadí. */
+export async function removeBlock(
+  blockerUserId: string,
+  blockedUserId: string,
+): Promise<void> {
+  await db.block.deleteMany({ where: { blockerUserId, blockedUserId } });
+}
+
+/**
+ * Blokační vztah mezi dvojicí (obousměrně) v jednom dotazu. Vrací, zda `viewer`
+ * blokuje `other` a zda `other` blokuje `viewer` — z toho se odvodí, kdo smí psát.
+ */
+export async function getBlockPair(
+  viewerUserId: string,
+  otherUserId: string,
+): Promise<{ viewerBlockedOther: boolean; otherBlockedViewer: boolean }> {
+  const rows = await db.block.findMany({
+    where: {
+      OR: [
+        { blockerUserId: viewerUserId, blockedUserId: otherUserId },
+        { blockerUserId: otherUserId, blockedUserId: viewerUserId },
+      ],
+    },
+    select: { blockerUserId: true },
+  });
+  return {
+    viewerBlockedOther: rows.some((r) => r.blockerUserId === viewerUserId),
+    otherBlockedViewer: rows.some((r) => r.blockerUserId === otherUserId),
+  };
+}
+
+/** Množina userId, které `viewer` zablokoval (pro filtr inboxu). */
+export async function listBlockedUserIds(
+  viewerUserId: string,
+): Promise<Set<string>> {
+  const rows = await db.block.findMany({
+    where: { blockerUserId: viewerUserId },
+    select: { blockedUserId: true },
+  });
+  return new Set(rows.map((r) => r.blockedUserId));
+}
+
+/** Blokace založené uživatelem (pro nastavení), nejnovější první. */
+export function listBlocksByUser(
+  blockerUserId: string,
+): Promise<{ blockedUserId: string; createdAt: Date }[]> {
+  return db.block.findMany({
+    where: { blockerUserId },
+    orderBy: { createdAt: "desc" },
+    select: { blockedUserId: true, createdAt: true },
   });
 }
