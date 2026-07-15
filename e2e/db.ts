@@ -241,3 +241,36 @@ export async function seedRequestInvite(
     update: {},
   });
 }
+
+// --- Poptávky — výpis + detail (T026) ---------------------------------------
+// Filtr dle profese potřebuje víc poptávek s KONKRÉTNÍMI, rozdílnými profesemi
+// — přes guide/brief by výsledná profese závisela na obsahu scénáře (křehké).
+// Přímý seed už publikovaného řádku je stejný princip jako `seedConversation`
+// výše: obchází UI vstupní bod, který pro tenhle konkrétní setup existuje, ale
+// znamenal by zbytečně křehký a pomalý test.
+
+/** Založí rovnou `active` + `public` poptávku (obchází guide/brief/publish UI). */
+export async function seedPublishedRequest(params: {
+  ownerUserId: string;
+  title: string;
+  professionSlugs: string[];
+  region: string;
+  budget?: string | null;
+  visibility?: "public" | "private";
+  status?: "active" | "paused";
+}): Promise<string> {
+  const row = await db.request.create({
+    data: {
+      ownerUserId: params.ownerUserId,
+      title: params.title,
+      type: "b2c",
+      status: params.status ?? "active",
+      visibility: params.visibility ?? "public",
+      targetProfessionSlugs: params.professionSlugs,
+      region: params.region,
+      budget: params.budget ?? null,
+      publishedAt: new Date(),
+    },
+  });
+  return row.id;
+}

@@ -1,16 +1,22 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Eye } from "lucide-react";
+import { Eye, Pencil, Send } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 import { getActor } from "@/lib/session";
 import {
   getPublicRequestView,
   getRequestVisibilityMeta,
   isUserInvitedToRequest,
 } from "@/features/requests/service";
-import { canReadRequestPublicView } from "@/features/requests/permissions";
+import {
+  canReadRequest,
+  canReadRequestPublicView,
+} from "@/features/requests/permissions";
 import { getProfessionsBySlugs } from "@/features/taxonomy/queries";
 import { BriefContentView } from "@/features/brief/components/brief-content-view";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   REQUEST_STATUS_LABELS,
@@ -19,17 +25,30 @@ import {
 
 /**
  * Veřejná anonymizovaná projekce poptávky (`/poptavka/[requestId]`, T025
- * §20.2–20.3). Přístup: vlastník/admin vždy (i draft — náhled před publikací,
- * main flow bod 6); jinak `public`/`shared_link` kdokoli, `private` jen
- * pozvaný (`RequestInvite`) — cizí/neexistující/nepublikovaná poptávka je 404
- * (neprozrazuje existenci). Definitivní indexovatelný výpis/detail s filtry
- * staví T026 — tahle stránka je seam pro anonymizovanou projekci z T025 a
- * NIKDY se neindexuje.
+ * §20.2–20.3, T026 § Main flow #4–5). Přístup: vlastník/admin vždy (i draft —
+ * náhled před publikací, T025 main flow bod 6); jinak `public`/`shared_link`
+ * kdokoli, `private` jen pozvaný (`RequestInvite`) — cizí/neexistující/
+ * nepublikovaná poptávka je 404 (neprozrazuje existenci). Indexovatelný jen
+ * pro skutečně veřejně čitelné poptávky (`generateMetadata`) — draft/private
+ * zůstávají `noindex`.
  */
-export const metadata: Metadata = {
-  title: "Poptávka — ArchiGuide",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ requestId: string }>;
+}): Promise<Metadata> {
+  const { requestId } = await params;
+  const meta = await getRequestVisibilityMeta(requestId);
+  const indexable =
+    meta !== null && meta.status !== "draft" && meta.visibility !== "private";
+
+  return {
+    title: "Poptávka — ArchiGuide",
+    robots: indexable
+      ? { index: true, follow: true }
+      : { index: false, follow: false },
+  };
+}
 
 export default async function PublicRequestPage({
   params,
@@ -59,6 +78,14 @@ export default async function PublicRequestPage({
   if (!result.ok) notFound();
   const view = result.view;
 
+  const isManager = canReadRequest(actor, { ownerUserId: meta.ownerUserId });
+
+  trackEvent("request_viewed", {
+    requestId,
+    status: view.status,
+    isManager,
+  });
+
   const professionsBySlug = await getProfessionsBySlugs(
     view.targetProfessionSlugs,
   );
@@ -73,6 +100,18 @@ export default async function PublicRequestPage({
         Anonymizovaný náhled poptávky — bez přesné adresy, telefonu, e-mailu a
         identity zadavatele.
       </div>
+
+      {isManager ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+          <span>Toto je náhled toho, co vidí ostatní.</span>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/requests/${requestId}`}>
+              <Pencil />
+              Spravovat poptávku
+            </Link>
+          </Button>
+        </div>
+      ) : null}
 
       <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -108,9 +147,74 @@ export default async function PublicRequestPage({
         <BriefContentView content={view.briefPreview} />
       ) : null}
 
+      {!isManager ? (
+        <ResponseCta
+          requestId={requestId}
+          status={view.status}
+          isLoggedIn={actor.kind === "user"}
+        />
+      ) : null}
+
       <footer className="text-muted-foreground border-t pt-4 text-xs">
         Vytvořeno v ArchiGuide.
       </footer>
+    </div>
+  );
+}
+
+/**
+ * CTA „Reagovat" (T026 § Main flow #4, slot pro T027). Nepřihlášený vede na
+ * přihlášení (nikdy na chybu, § Acceptance criteria); přihlášený vidí tlačítko
+ * deaktivované s vysvětlením — samotná reakce přijde s T027, poptávka mimo
+ * `active` navíc reakce nepřijímá (Alternative flows).
+ */
+function ResponseCta({
+  requestId,
+  status,
+  isLoggedIn,
+}: {
+  requestId: string;
+  status: keyof typeof REQUEST_STATUS_LABELS;
+  isLoggedIn: boolean;
+}) {
+  // Stav má přednost před přihlášením: mimo `active` reagovat nejde vůbec
+  // (Alternative flows), takže i nepřihlášený vidí deaktivované CTA s
+  // vysvětlením, ne login odkaz, který by slibovat něco nesplnitelného.
+  if (status !== "active") {
+    return (
+      <div className="space-y-2">
+        <Button disabled>
+          <Send />
+          Reagovat na poptávku
+        </Button>
+        <p className="text-muted-foreground text-sm">
+          Poptávka je {REQUEST_STATUS_LABELS[status].toLowerCase()} — reagovat
+          nelze.
+        </p>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <Button asChild>
+        <Link href={`/login?next=${encodeURIComponent(`/poptavka/${requestId}`)}`}>
+          <Send />
+          Reagovat na poptávku
+        </Link>
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <Button disabled>
+        <Send />
+        Reagovat na poptávku
+      </Button>
+      <p className="text-muted-foreground text-sm">
+        Reakce na poptávky budou dostupné brzy.
+      </p>
     </div>
   );
 }
