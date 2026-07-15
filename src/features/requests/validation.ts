@@ -12,6 +12,7 @@ import {
   REQUEST_FIELD_MAX_LENGTH,
   REQUEST_TITLE_MAX_LENGTH,
   REQUEST_TYPES,
+  SELECTABLE_REQUEST_VISIBILITIES,
 } from "./types";
 
 /** Prázdný/whitespace řetězec → `null` (jednotné „neuvedeno"). */
@@ -73,3 +74,11 @@ export const requestRefineSchema = requestInputSchema.pick({
 
 export type RequestRefineInput = z.input<typeof requestRefineSchema>;
 export type ParsedRequestRefineInput = z.output<typeof requestRefineSchema>;
+
+/**
+ * Viditelnost nastavitelná vlastníkem (T025 § Main flow 1). Ortogonální k
+ * requestInputSchema — mění se samostatnou akcí (`setRequestVisibilityAction`),
+ * ne jako součást editace draftu.
+ */
+export const requestVisibilitySchema = z.enum(SELECTABLE_REQUEST_VISIBILITIES);
+export type RequestVisibilityInput = z.infer<typeof requestVisibilitySchema>;

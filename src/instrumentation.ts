@@ -17,5 +17,6 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("@/features/portfolio/blocks-service");
     await import("@/features/messaging/attachment-context");
+    await import("@/features/requests/attachment-context");
   }
 }

@@ -38,11 +38,11 @@ Přesná adresa vepsaná do popisu → varování, uživatel rozhodne (`zadani/0
 Eventy: `request_visibility_set`, `request_privacy_warning_shown`.
 
 ## Acceptance criteria
-- [ ] Unit test: veřejné DTO nikdy neobsahuje adresu, telefon, e-mail, identitu klienta.
-- [ ] E2E: publikovaná veřejná poptávka → anonymní návštěvník vidí jen povolená pole.
-- [ ] Neveřejnou poptávku nevidí nikdo kromě vlastníka a pozvaných.
-- [ ] Telefon v popisu vyvolá varování před publikací.
-- [ ] Náhled veřejné verze odpovídá tomu, co reálně vidí cizí uživatel.
+- [x] Unit test: veřejné DTO nikdy neobsahuje adresu, telefon, e-mail, identitu klienta.
+- [x] E2E: publikovaná veřejná poptávka → anonymní návštěvník vidí jen povolená pole.
+- [x] Neveřejnou poptávku nevidí nikdo kromě vlastníka a pozvaných.
+- [x] Telefon v popisu vyvolá varování před publikací.
+- [x] Náhled veřejné verze odpovídá tomu, co reálně vidí cizí uživatel.
 
 ## Out of scope
 Výpis a detail (T026), pozvání konkrétních profesionálů UI (T029), per-příjemce viditelnost příloh.
