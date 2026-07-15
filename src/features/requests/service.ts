@@ -6,6 +6,7 @@ import { trackEvent, type AnalyticsEvent } from "@/lib/analytics";
 import { getBriefById } from "@/features/brief/service";
 import { parseBriefContent } from "@/features/brief/content";
 import type { BriefContent } from "@/features/brief/types";
+import { recomputeMatches } from "@/features/matching/service";
 import {
   isAuditedAction,
   nextStatus,
@@ -454,6 +455,18 @@ export async function transitionRequest(params: {
     from,
     to,
   });
+
+  if (params.action === "publish") {
+    // Matching (T028 § Main flow bod 5): publikace spouští výpočet kandidátů.
+    // Best-effort — selhání doporučení nesmí zablokovat samotnou publikaci
+    // (zadani/16 §8, „nikdy neshodit hlavní akci vedlejším efektem").
+    try {
+      await recomputeMatches(params.requestId);
+    } catch (error) {
+      console.error("recomputeMatches selhal po publikaci poptávky", error);
+    }
+  }
+
   return { ok: true, view: toView(updated) };
 }
 

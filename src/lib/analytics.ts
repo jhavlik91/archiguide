@@ -87,7 +87,11 @@ export type AnalyticsEvent =
   | "request.expired"
   // Poptávka — viditelnost + anonymizace (T025)
   | "request.visibility_changed"
-  | "request.privacy_warning_shown";
+  | "request.privacy_warning_shown"
+  // Matching engine (T028) — jména dle tasku (§ Analytics), ne dotted konvence.
+  | "match_computed"
+  | "match_dismissed"
+  | "match_shortlisted";
 
 export function trackEvent(
   event: AnalyticsEvent,
