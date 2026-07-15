@@ -61,6 +61,8 @@ model User {
   sentMessages        Message[] // T030 (odeslané zprávy)
   notifications       Notification[] // T032 (přijaté in-app notifikace)
   notificationEmailDeliveries NotificationEmailDelivery[] // T033 (audit odeslaných e-mailů)
+  requests            Request[] // T024 (owner = uživatel)
+  requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
 
   @@map("users")
 }
@@ -1126,6 +1128,8 @@ model Brief {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  requests Request[] // T024 (poptávky vzniklé z tohoto briefu)
+
   @@index([ownerUserId])
   @@index([guideSessionId])
   @@map("briefs")
@@ -1383,4 +1387,140 @@ model NotificationEmailDelivery {
   //     (Prisma generuje běžný unikátní index, který NULL hodnoty nekoliduje).
   //   - (recipientUserId, kind, periodKey) WHERE periodKey IS NOT NULL.
   @@map("notification_email_deliveries")
+}
+// ---------------------------------------------------------------------------
+// Poptávka — CRUD + stavový model (T024)
+//
+// Jádro marketplace (legacy-master-spec §20, zadani/08 §3). Poptávka (`Request`)
+// vzniká VŽDY z briefu (guide je kritická cesta — poptávka bez briefu v MVP
+// nevzniká). Jeden brief může mít víc poptávek (jiné profese). Klíčové invarianty:
+//
+//  - STAVOVÝ AUTOMAT `draft → active → in_discussion → awarded → closed`
+//    (+ `active → paused → active`, `active → cancelled|expired`,
+//    `in_discussion → cancelled`) je jediným způsobem změny stavu. Neplatný
+//    přechod server odmítne (logika v `features/requests/state-machine.ts`).
+//  - SNAPSHOT BRIEFU při publikaci (`briefSnapshot`): pozdější změna briefu už
+//    publikovanou poptávku neovlivní (zadani/09 — Request). Do publikace se
+//    poptávka odkazuje na živý brief přes `briefId`.
+//  - VIDITELNOST (`private` default) tu jen existuje jako pole; anonymizaci a
+//    veřejný výpis řeší T025/T026 (least privilege — nová položka je soukromá).
+//  - AUDIT významných přechodů (`RequestAuditEntry`): publish/pause/cancel/
+//    award/close (+ resume/expire) se zaznamenávají s aktérem a from→to stavem.
+// ---------------------------------------------------------------------------
+/// Typ poptávky (v MVP jen `b2c` | `b2b`). Řídí publikační oprávnění (matice
+/// „Publikovat B2C/B2B poptávku"). Ostatní typy (invite-only, urgentní,
+/// subdodávka, práce) jsou finální produkt, mimo scope.
+enum RequestType {
+  b2c
+  b2b
+}
+
+/// Viditelnost poptávky. Nová je vždy `private` (jen vlastník). `shared_link`/
+/// `public` a anonymizace jsou vědomá akce v T025 — tady jen pole + default.
+enum RequestVisibility {
+  private
+  shared_link
+  public
+}
+
+/// Stav poptávky (zadani/08 §3). Enum v DB, uživatel vždy vidí aktuální stav.
+/// Terminální stavy: `closed`, `cancelled`, `expired`.
+enum RequestStatus {
+  draft
+  active
+  in_discussion
+  paused
+  awarded
+  closed
+  cancelled
+  expired
+}
+
+/// Poptávka navázaná na brief (§20). Dotazovatelné atributy (typ, stav, region,
+/// cílové profese) jsou vlastní sloupce; `briefSnapshot` je JSON kopie obsahu
+/// briefu z okamžiku publikace (nezávislá na pozdějších změnách briefu).
+model Request {
+  id String @id @default(cuid())
+
+  /// Vlastník poptávky. CRUD i přechody smí jen on (nebo admin) —
+  /// `lib/permissions.ts` → `requests.*`.
+  ownerUserId String
+  ownerUser   User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  /// Zdrojový brief. Poptávka bez briefu v MVP nevzniká; smazání briefu poptávku
+  /// neruší (`SetNull`) — publikovaná drží vlastní `briefSnapshot`.
+  briefId String?
+  brief   Brief?  @relation(fields: [briefId], references: [id], onDelete: SetNull)
+
+  type       RequestType       @default(b2c)
+  visibility RequestVisibility @default(private)
+  status     RequestStatus     @default(draft)
+
+  /// Název poptávky (předvyplněný z briefu, editovatelný v draftu).
+  title String
+
+  /// Cílové profese z taxonomie (T005) — snapshot slugů, ≥1 (validace `zod`).
+  /// Snapshot (ne FK): rozhodnutí nezmizí při pozdější změně číselníku.
+  targetProfessionSlugs String[]
+
+  /// Region působnosti (jen město/region, bez přesné adresy — zadani/09).
+  region String
+
+  /// Rozpočet — volný text, `null` = „neuvedeno" (nevím je validní, §Validation).
+  budget String?
+  /// Časový horizont — volný text, `null` = „neuvedeno".
+  timeline String?
+
+  /// Termín, po jehož překročení `active` poptávka expiruje (kontrola při čtení
+  /// + denní job). `null` = bez termínu, neexpiruje automaticky.
+  deadline DateTime?
+
+  /// Snapshot obsahu briefu (`BriefContent`) pořízený při PUBLIKACI. `null` do
+  /// publikace (draft čte živý brief přes `briefId`).
+  briefSnapshot Json?
+
+  /// Kdy byla poptávka poprvé publikována (`draft → active`). `null` = dosud draft.
+  publishedAt DateTime?
+
+  /// Byla poptávka editována po publikaci? Řídí viditelnou poznámku „upraveno"
+  /// (upřesnění po publikaci — main flow §3).
+  editedAfterPublish Boolean @default(false)
+
+  auditEntries RequestAuditEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerUserId])
+  @@index([briefId])
+  @@index([status])
+  @@map("requests")
+}
+
+/// Auditní záznam významného přechodu poptávky (zadani/08 § Stavová pravidla).
+/// Append-only: nikdy se needituje/nemaže. Aktér je `null` u systémových
+/// přechodů (expirace denním jobem, zrušení při smazání účtu).
+model RequestAuditEntry {
+  id String @id @default(cuid())
+
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Kdo přechod provedl. `null` = systém (job/kaskáda). `SetNull` při smazání
+  /// účtu — auditní stopa zůstává, jen ztratí identitu.
+  actorUserId String?
+  actorUser   User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  /// Provedená akce (`published`, `paused`, `resumed`, `cancelled`, `awarded`,
+  /// `closed`, `expired`). Textová hodnota kvůli auditní stabilitě.
+  action String
+
+  /// Stav před a po přechodu (kvůli rekonstrukci historie).
+  fromStatus RequestStatus?
+  toStatus   RequestStatus
+
+  createdAt DateTime @default(now())
+
+  @@index([requestId, createdAt])
+  @@map("request_audit_entries")
 }

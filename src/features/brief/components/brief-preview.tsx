@@ -12,6 +12,7 @@ import {
   Loader2,
   Lock,
   Pencil,
+  Send,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
   markBriefReadyAction,
   regenerateBriefAction,
 } from "../actions";
+import { createRequestFromBriefAction } from "@/features/requests/actions";
 import {
   BRIEF_STATUS_LABELS,
   BRIEF_VISIBILITY_LABELS,
@@ -61,6 +63,13 @@ export function BriefPreview({ brief }: { brief: BriefView }) {
       } else {
         toast.error(res.error);
       }
+    });
+  }
+
+  function createRequest() {
+    // Akce založí draft poptávku a přesměruje na její detail (redirect uvnitř).
+    startTransition(async () => {
+      await createRequestFromBriefAction(brief.id);
     });
   }
 
@@ -152,6 +161,15 @@ export function BriefPreview({ brief }: { brief: BriefView }) {
                 Export
               </Link>
             </Button>
+
+            {/* Vytvoření poptávky z briefu (T024). Archivovaný brief je jen ke
+                čtení, takže z něj poptávku nezakládáme (stejně jako ostatní akce). */}
+            {!isArchived ? (
+              <Button variant="outline" onClick={createRequest} disabled={pending}>
+                {pending ? <Loader2 className="animate-spin" /> : <Send />}
+                Vytvořit poptávku
+              </Button>
+            ) : null}
 
             {!isArchived && brief.guideSessionId ? (
               <Button variant="ghost" onClick={regenerate} disabled={pending}>

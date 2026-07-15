@@ -74,7 +74,17 @@ export type AnalyticsEvent =
   // Vyhledávání profesionálů (T034)
   | "search_performed"
   | "search_result_clicked"
-  | "search_empty";
+  | "search_empty"
+  // Poptávka — CRUD + stavový model (T024)
+  | "request.created"
+  | "request.published"
+  | "request.discussion_started"
+  | "request.paused"
+  | "request.resumed"
+  | "request.awarded"
+  | "request.closed"
+  | "request.cancelled"
+  | "request.expired";
 
 export function trackEvent(
   event: AnalyticsEvent,
