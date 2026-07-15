@@ -84,7 +84,11 @@ export type AnalyticsEvent =
   | "request.awarded"
   | "request.closed"
   | "request.cancelled"
-  | "request.expired";
+  | "request.expired"
+  // Matching engine (T028) — jména dle tasku (§ Analytics), ne dotted konvence.
+  | "match_computed"
+  | "match_dismissed"
+  | "match_shortlisted";
 
 export function trackEvent(
   event: AnalyticsEvent,
