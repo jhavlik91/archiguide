@@ -91,7 +91,11 @@ export type AnalyticsEvent =
   // Matching engine (T028) — jména dle tasku (§ Analytics), ne dotted konvence.
   | "match_computed"
   | "match_dismissed"
-  | "match_shortlisted";
+  | "match_shortlisted"
+  // Administrace — uživatelé a taxonomie (T035)
+  | "admin_user_suspended"
+  | "admin_role_changed"
+  | "admin_taxonomy_changed";
 
 export function trackEvent(
   event: AnalyticsEvent,

@@ -4,7 +4,9 @@ import type { UserStatus } from "@prisma/client";
  * Rozhodovací logika pro přihlášení přes Google (OAuth), oddělená od DB kvůli
  * testovatelnosti. Vrací, co má side-effect vrstva provést.
  *
- * - `block`     — účet je smazaný, přihlášení se odmítne (T003 edge case).
+ * - `block`     — účet je smazaný nebo adminem suspendovaný (T035) — na
+ *                 rozdíl od `deactivated` se suspenze nedá obejít vlastní
+ *                 reaktivací, ani přes Google.
  * - `link`      — existující účet, jen doplnit vazbu na Google.
  * - `reactivate`— existující deaktivovaný účet; přihlášení přes Google jej
  *                 obnoví (vědomá akce vlastníka e-mailu u providera).
@@ -18,6 +20,7 @@ export function decideGoogleLink(
   if (!existing) return "create";
   switch (existing.status) {
     case "deleted":
+    case "suspended":
       return "block";
     case "deactivated":
       return "reactivate";

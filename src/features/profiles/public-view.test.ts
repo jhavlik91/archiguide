@@ -46,8 +46,11 @@ describe("resolvePublicView", () => {
     ).toEqual({ visible: false });
   });
 
-  it("deaktivovaný/smazaný uživatel je nedostupný i s publikovaným profilem", () => {
+  it("deaktivovaný/suspendovaný/smazaný uživatel je nedostupný i s publikovaným profilem", () => {
     expect(resolvePublicView({ ...base, userStatus: "deactivated" })).toEqual({
+      visible: false,
+    });
+    expect(resolvePublicView({ ...base, userStatus: "suspended" })).toEqual({
       visible: false,
     });
     expect(
