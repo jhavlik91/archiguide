@@ -44,30 +44,6 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Back-relace vlastněné jinými doménami (nepřidávají sloupec do `users`).
-<<<<<<< HEAD
-  credential          Credential? // T003
-  authAccounts        AuthAccount[] // T003
-  passwordResetTokens PasswordResetToken[] // T003
-  roles               UserRole[] // T004
-  professionalProfile ProfessionalProfile? // T007
-  orgMemberships      OrganizationMember[] // T009
-  verifications       Verification[] // T011
-  portfolioProjects   PortfolioProject[] // T012 (owner = uživatel)
-  portfolioCoauthors  PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
-  mediaAssets         MediaAsset[] // T014 (owner = uživatel)
-  guideSessions       GuideSession[] // T017 (guide session připojená k účtu)
-  attachments         Attachment[] // T023 (owner = uživatel)
-  briefs              Brief[] // T021 (owner = uživatel)
-  conversations       ConversationParticipant[] // T030 (účast v konverzacích)
-  sentMessages        Message[] // T030 (odeslané zprávy)
-  notifications       Notification[] // T032 (přijaté in-app notifikace)
-  requests            Request[] // T024 (owner = uživatel)
-  requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
-  requestInvites      RequestInvite[] // T025 (pozvaný profesionál k neveřejné poptávce)
-  reportsFiled        Report[]                  @relation("ReportsFiled") // T031 (podaná nahlášení)
-  blocksInitiated     Block[]                   @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
-  blocksReceived      Block[]                   @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
-=======
   credential           Credential? // T003
   authAccounts         AuthAccount[] // T003
   passwordResetTokens  PasswordResetToken[] // T003
@@ -90,7 +66,7 @@ model User {
   reportsFiled         Report[]                  @relation("ReportsFiled") // T031 (podaná nahlášení)
   blocksInitiated      Block[]                   @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
   blocksReceived       Block[]                   @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
->>>>>>> origin/main
+  requestInvites       RequestInvite[] // T025 (pozvaný profesionál k neveřejné poptávce)
 
   @@map("users")
 }
@@ -1448,13 +1424,9 @@ model Request {
   /// (upřesnění po publikaci — main flow §3).
   editedAfterPublish Boolean @default(false)
 
-<<<<<<< HEAD
-  auditEntries RequestAuditEntry[]
-  invites      RequestInvite[]
-=======
   auditEntries         RequestAuditEntry[]
   matchRecommendations MatchRecommendation[] // T028
->>>>>>> origin/main
+  invites              RequestInvite[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
