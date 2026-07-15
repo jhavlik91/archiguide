@@ -10,3 +10,5 @@ import "server-only";
 
 // T031 — přílohy zpráv (kontext `message`): přístup mají účastníci konverzace.
 import "@/features/messaging/attachment-context";
+// T025 — přílohy poptávky (kontext `request`): vlastník + pozvaní profesionálové.
+import "@/features/requests/attachment-context";

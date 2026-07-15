@@ -85,6 +85,13 @@ export type AnalyticsEvent =
   | "request.closed"
   | "request.cancelled"
   | "request.expired"
+  // Poptávka — viditelnost + anonymizace (T025)
+  | "request.visibility_changed"
+  | "request.privacy_warning_shown"
+  // Matching engine (T028) — jména dle tasku (§ Analytics), ne dotted konvence.
+  | "match_computed"
+  | "match_dismissed"
+  | "match_shortlisted"
   // Administrace — uživatelé a taxonomie (T035)
   | "admin_user_suspended"
   | "admin_role_changed"

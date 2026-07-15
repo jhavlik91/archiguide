@@ -152,7 +152,9 @@ export async function blockExists(
 // stav) čte i přímo z DB.
 
 /** Notifikace příjemce (nejnovější událost nahoře) pro přesná tvrzení v e2e. */
-export async function listNotificationsFor(recipientUserId: string): Promise<
+export async function listNotificationsFor(
+  recipientUserId: string,
+): Promise<
   { title: string; dedupeKey: string; count: number; state: string }[]
 > {
   return db.notification.findMany({
@@ -172,4 +174,20 @@ export async function getNotificationIdFor(
     select: { id: true },
   });
   return row?.id ?? null;
+}
+
+// --- Poptávka — viditelnost + anonymizace (T025) ----------------------------
+// Pozvání konkrétního profesionála má UI vstupní bod až v T029 (matching);
+// e2e proto pozvánku seeduje přímo do DB, stejný princip jako `seedConversation`.
+
+/** Pozve profesionála k neveřejné poptávce (idempotentní). */
+export async function seedRequestInvite(
+  requestId: string,
+  invitedUserId: string,
+): Promise<void> {
+  await db.requestInvite.upsert({
+    where: { requestId_invitedUserId: { requestId, invitedUserId } },
+    create: { requestId, invitedUserId },
+    update: {},
+  });
 }

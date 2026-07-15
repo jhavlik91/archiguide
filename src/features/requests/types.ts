@@ -57,6 +57,15 @@ export const REQUEST_VISIBILITY_LABELS: Record<RequestVisibility, string> = {
   public: "Veřejná",
 };
 
+/**
+ * Viditelnosti nabízené v UI selektoru (T025 § Main flow 1 — vlastník volí jen
+ * mezi `private`/`public`). `shared_link` zůstává v enumu jako slot, ale
+ * selektor ho zatím nenabízí.
+ */
+export const SELECTABLE_REQUEST_VISIBILITIES = ["private", "public"] as const;
+export type SelectableRequestVisibility =
+  (typeof SELECTABLE_REQUEST_VISIBILITIES)[number];
+
 /** Max délka názvu poptávky (předvyplněný z briefu, editovatelný). */
 export const REQUEST_TITLE_MAX_LENGTH = 160;
 /** Max délka volných textových polí (rozpočet, časový horizont, region). */
@@ -95,6 +104,29 @@ export interface RequestView {
   editedAfterPublish: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Anonymizovaná projekce poptávky pro cizí čtenáře (T025, §20.2). WHITELIST DTO
+ * — obsahuje jen pole, která smí vidět kdokoli (public) / pozvaní (private).
+ * Záměrně BEZ `ownerUserId`, `briefId` a plného `briefSnapshot` (jen
+ * redigovaný `briefPreview` bez přesné adresy) — nová soukromá pole na
+ * `Request`/`BriefContent` se sem musí přidat explicitně, jinak se nezveřejní
+ * (`features/requests/public-view.ts` § buildRequestPublicView).
+ */
+export interface RequestPublicView {
+  id: string;
+  type: RequestType;
+  status: RequestStatus;
+  title: string;
+  targetProfessionSlugs: string[];
+  region: string;
+  budget: string | null;
+  timeline: string | null;
+  deadline: string | null;
+  publishedAt: string | null;
+  /** Redigovaný snapshot briefu (bez přesné adresy) — `null` do publikace. */
+  briefPreview: BriefContent | null;
 }
 
 /** Stručná položka pro přehled mých poptávek (dashboard vlastníka). */

@@ -50,28 +50,30 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Back-relace vlastněné jinými doménami (nepřidávají sloupec do `users`).
-  credential          Credential? // T003
-  authAccounts        AuthAccount[] // T003
-  passwordResetTokens PasswordResetToken[] // T003
-  roles               UserRole[] // T004
-  professionalProfile ProfessionalProfile? // T007
-  orgMemberships      OrganizationMember[] // T009
-  verifications       Verification[] // T011
-  portfolioProjects   PortfolioProject[] // T012 (owner = uživatel)
-  portfolioCoauthors  PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
-  mediaAssets         MediaAsset[] // T014 (owner = uživatel)
-  guideSessions       GuideSession[] // T017 (guide session připojená k účtu)
-  attachments         Attachment[] // T023 (owner = uživatel)
-  briefs              Brief[] // T021 (owner = uživatel)
-  conversations       ConversationParticipant[] // T030 (účast v konverzacích)
-  sentMessages        Message[] // T030 (odeslané zprávy)
-  notifications       Notification[] // T032 (přijaté in-app notifikace)
-  requests            Request[] // T024 (owner = uživatel)
-  requestAuditEntries RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
-  adminAuditLogs      AdminAuditLog[] // T035 (aktér admin akce)
-  reportsFiled        Report[]                  @relation("ReportsFiled") // T031 (podaná nahlášení)
-  blocksInitiated     Block[]                   @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
-  blocksReceived      Block[]                   @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
+  credential           Credential? // T003
+  authAccounts         AuthAccount[] // T003
+  passwordResetTokens  PasswordResetToken[] // T003
+  roles                UserRole[] // T004
+  professionalProfile  ProfessionalProfile? // T007
+  orgMemberships       OrganizationMember[] // T009
+  verifications        Verification[] // T011
+  portfolioProjects    PortfolioProject[] // T012 (owner = uživatel)
+  portfolioCoauthors   PortfolioCoauthor[] // T012 (uvedení jako spoluautor)
+  mediaAssets          MediaAsset[] // T014 (owner = uživatel)
+  guideSessions        GuideSession[] // T017 (guide session připojená k účtu)
+  attachments          Attachment[] // T023 (owner = uživatel)
+  briefs               Brief[] // T021 (owner = uživatel)
+  conversations        ConversationParticipant[] // T030 (účast v konverzacích)
+  sentMessages         Message[] // T030 (odeslané zprávy)
+  notifications        Notification[] // T032 (přijaté in-app notifikace)
+  requests             Request[] // T024 (owner = uživatel)
+  requestAuditEntries  RequestAuditEntry[] // T024 (aktér auditovaného přechodu)
+  matchRecommendations MatchRecommendation[] // T028 (kandidát doporučení)
+  reportsFiled         Report[]                  @relation("ReportsFiled") // T031 (podaná nahlášení)
+  blocksInitiated      Block[]                   @relation("BlocksInitiated") // T031 (koho uživatel blokuje)
+  blocksReceived       Block[]                   @relation("BlocksReceived") // T031 (kdo blokuje uživatele)
+  requestInvites       RequestInvite[] // T025 (pozvaný profesionál k neveřejné poptávce)
+  adminAuditLogs       AdminAuditLog[] // T035 (aktér admin akce)
 
   @@map("users")
 }
@@ -1355,8 +1357,11 @@ enum RequestType {
   b2b
 }
 
-/// Viditelnost poptávky. Nová je vždy `private` (jen vlastník). `shared_link`/
-/// `public` a anonymizace jsou vědomá akce v T025 — tady jen pole + default.
+/// Viditelnost poptávky. Nová je vždy `private` (jen vlastník). Anonymizovaná
+/// projekce pro `public`/`shared_link` a pozvánky (`RequestInvite`) pro
+/// `private` řeší T025 (`features/requests/permissions.ts` →
+/// `requests.read_public`). UI selektor v T025 nabízí jen `private`/`public`
+/// (main flow); `shared_link` zůstává v enumu jako slot pro pozdější odkaz.
 enum RequestVisibility {
   private
   shared_link
@@ -1426,7 +1431,9 @@ model Request {
   /// (upřesnění po publikaci — main flow §3).
   editedAfterPublish Boolean @default(false)
 
-  auditEntries RequestAuditEntry[]
+  auditEntries         RequestAuditEntry[]
+  matchRecommendations MatchRecommendation[] // T028
+  invites              RequestInvite[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1463,6 +1470,35 @@ model RequestAuditEntry {
 
   @@index([requestId, createdAt])
   @@map("request_audit_entries")
+}
+
+/// Pozvánka konkrétního profesionála k NEVEŘEJNÉ poptávce (T025, §20.3 — „je
+/// viditelná pouze osloveným profesionálům"). Existence pozvánky je JEDINÝ
+/// způsob, jak cizí uživatel smí vidět anonymizovanou projekci `private`
+/// poptávky (`requests.read_public` v `features/requests/permissions.ts`).
+/// Vznik pozvánky (výběr kandidáta, UI) řeší T029 — tady jen datový model +
+/// idempotentní zápis, aby na něm T029 mohlo stavět.
+model RequestInvite {
+  id String @id @default(cuid())
+
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Pozvaný profesionál. Cascade — smazání účtu pozvánku ruší.
+  invitedUserId String
+  invitedUser   User   @relation(fields: [invitedUserId], references: [id], onDelete: Cascade)
+
+  /// Kdo pozval (audit). Bez relace na User — jen ID (stejný princip jako
+  /// `OrganizationInvitation.invitedByUserId`).
+  invitedByUserId String?
+
+  createdAt DateTime @default(now())
+
+  /// Opětovné pozvání téhož kandidáta je idempotentní (T029 § Edge cases).
+  @@unique([requestId, invitedUserId])
+  @@index([requestId])
+  @@index([invitedUserId])
+  @@map("request_invites")
 }
 
 // ---------------------------------------------------------------------------
@@ -1626,4 +1662,66 @@ model Report {
   @@index([state])
   @@index([reporterUserId])
   @@map("reports")
+}
+
+// ---------------------------------------------------------------------------
+// Matching engine (T028)
+//
+// Server-side doporučení profesionálů k poptávce. MVP = deterministická váhová
+// pravidla nad existujícími daty (profil, profese, region, portfolio); žádné
+// ML/embeddings. Skóre je čistě interní pořadí — NIKDY se nevystavuje jako
+// procento přesnosti (zadani/16-ai-team-execution-rules.md §5). Každé
+// doporučení nese ≥1 strukturovaný, lidsky vysvětlitelný důvod (`reasons`).
+// Konzumuje T029 (UI matching, slot) a T033 (e-mail digest, slot).
+// ---------------------------------------------------------------------------
+
+/// Životní cyklus doporučení. `new` → `shown` (zobrazeno vlastníkovi) →
+/// `shortlisted` (vybráno) | `dismissed` (odmítnuto). Bez zpětných přechodů v MVP.
+enum MatchRecommendationStatus {
+  new
+  shown
+  shortlisted
+  dismissed
+}
+
+/// Jedno doporučení profesionála k poptávce. Přepočet (`recomputeMatches`)
+/// existující řádky pro danou poptávku aktualizuje (upsert dle
+/// `[requestId, candidateUserId]`) — stavová progrese (`shown`/`shortlisted`/
+/// `dismissed`) se zachovává, mění se jen `score`/`reasons`. Kandidát, který
+/// přestane vyhovovat (odpublikování profilu, ztráta `acceptingRequests`,
+/// konflikt zájmů), se přepočtem smaže — doporučení „staženo" (§ Edge cases).
+model MatchRecommendation {
+  id String @id @default(cuid())
+
+  /// Cíl doporučení — poptávka. Zánik poptávky doporučení ruší.
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Kandidát — profesionál (profil je 1:1 s userId, viz T007).
+  candidateUserId String
+  candidateUser   User   @relation(fields: [candidateUserId], references: [id], onDelete: Cascade)
+
+  /// Interní pořadové skóre (váhový součet + drobný deterministický tie-break
+  /// dle kompletnosti profilu, viz `features/matching/scoring.ts`). Nikdy se
+  /// nevystavuje jako procento přesnosti — jen pro řazení kandidátů.
+  score Float
+
+  /// Strukturované, strojově čitelné důvody doporučení (≥1 vždy — bez důvodu
+  /// doporučení nevzniká, viz § Main flow). Tvar `MatchReason[]`
+  /// (`features/matching/types.ts`); UI (T029) z nich složí lidskou větu.
+  reasons Json
+
+  status MatchRecommendationStatus @default(new)
+
+  /// Příznak sponzorované pozice. V MVP VŽDY false — pole existuje pro budoucí
+  /// monetizaci, ale sponzorované řazení se nesmí protlačit skrytě (zadani/16 §11).
+  sponsored Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([requestId, candidateUserId])
+  @@index([requestId])
+  @@index([candidateUserId])
+  @@map("match_recommendations")
 }
