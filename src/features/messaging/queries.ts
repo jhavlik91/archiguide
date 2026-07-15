@@ -1,19 +1,26 @@
 import "server-only";
 
+import { type AttachmentView } from "@/features/attachments/types";
+import { toView as attachmentToView } from "@/lib/attachments";
 import { getActor } from "@/lib/session";
 // Import zároveň registruje oprávnění messagingu (access/send/start).
 import { canAccessConversation, canSendToConversation } from "./permissions";
-import { buildIdentity, sendBlockReason } from "./rules";
+import { BLOCKED_SEND_MESSAGE, OUTGOING_BLOCK_MESSAGE, buildIdentity, sendBlockReason } from "./rules";
 import {
+  attachmentsForMessages,
   countUnreadForParticipant,
+  getBlockPair,
   getConversationById,
   getIdentityFacts,
   getRecentMessages,
   type IdentityFactsRow,
+  listBlockedUserIds,
+  listBlocksByUser,
   type MessageWithReply,
   listInboxParticipations,
 } from "./service";
 import {
+  type BlockedUserSummary,
   type ConversationContextView,
   type ConversationDetail,
   type ConversationSummary,
@@ -55,11 +62,12 @@ function contextView(
   return label && contextType ? { type: contextType, label } : null;
 }
 
-/** Sestaví view zprávy z DB řádku a předem načtených identit (sdílené s akcemi). */
+/** Sestaví view zprávy z DB řádku, předem načtených identit a příloh (sdílené s akcemi). */
 export function toMessageView(
   m: MessageWithReply,
   viewerUserId: string,
   facts: FactsMap,
+  attachments: AttachmentView[] = [],
 ): MessageView {
   const hidden = m.moderationState !== "visible";
   const replyTo = m.replyTo
@@ -84,6 +92,8 @@ export function toMessageView(
     createdAt: m.createdAt.toISOString(),
     clientToken: m.clientToken,
     replyTo,
+    // Přílohy skryté zprávy se nezobrazují (moderační skrytí zakrývá i obsah).
+    attachments: hidden ? [] : attachments,
   };
 }
 
@@ -96,11 +106,23 @@ export async function getInbox(): Promise<ConversationSummary[]> {
   const actor = await getActor();
   if (actor.kind !== "user") return [];
 
-  const participations = await listInboxParticipations(actor.userId);
+  const [participations, blockedIds] = await Promise.all([
+    listInboxParticipations(actor.userId),
+    listBlockedUserIds(actor.userId),
+  ]);
+
+  // Konverzace s protistranou, kterou divák zablokoval, se v aktivním inboxu
+  // nezobrazuje (T031 § Main flow bod 2 — blokující ji nevidí).
+  const visible = participations.filter((p) => {
+    const other = p.conversation.participants.find(
+      (pp) => pp.userId !== actor.userId,
+    );
+    return !(other && blockedIds.has(other.userId));
+  });
 
   const otherIds = [
     ...new Set(
-      participations
+      visible
         .flatMap((p) => p.conversation.participants.map((pp) => pp.userId))
         .filter((id) => id !== actor.userId),
     ),
@@ -108,7 +130,7 @@ export async function getInbox(): Promise<ConversationSummary[]> {
   const facts = await getIdentityFacts(otherIds);
 
   return Promise.all(
-    participations.map(async (p): Promise<ConversationSummary> => {
+    visible.map(async (p): Promise<ConversationSummary> => {
       const conv = p.conversation;
       const otherPart = conv.participants.find(
         (pp) => pp.userId !== actor.userId,
@@ -123,7 +145,8 @@ export async function getInbox(): Promise<ConversationSummary[]> {
         id: conv.id,
         other: identityFrom(otherPart?.userId ?? "", facts),
         context: contextView(conv.contextType),
-        lastMessagePreview: last ? toPreview(last.content) : null,
+        // Prázdný obsah = zpráva jen s přílohou → náhled „Příloha".
+        lastMessagePreview: last ? toPreview(last.content) || "Příloha" : null,
         lastMessageAt: conv.lastMessageAt?.toISOString() ?? null,
         unreadCount,
         archived: p.archivedAt !== null,
@@ -155,12 +178,36 @@ export async function getConversationDetail(
   const other = identityFrom(otherIds[0] ?? "", facts);
 
   const { messages, hasMoreOlder } = await getRecentMessages(conversationId);
+
+  // Přílohy všech zobrazených zpráv jedním dotazem (batch), pak per zpráva do view.
+  const attachmentsMap = await attachmentsForMessages(messages.map((m) => m.id));
   const messageViews = messages.map((m) =>
-    toMessageView(m, actor.userId, facts),
+    toMessageView(
+      m,
+      actor.userId,
+      facts,
+      (attachmentsMap.get(m.id) ?? []).map(attachmentToView),
+    ),
   );
 
+  // Blokace mezi divákem a protistranou (v 1:1 je „other" jeden).
+  const otherId = otherIds[0];
+  const block = otherId
+    ? await getBlockPair(actor.userId, otherId)
+    : { viewerBlockedOther: false, otherBlockedViewer: false };
+
   const otherStatuses = otherIds.map((id) => facts.get(id)?.status ?? "deleted");
-  const blockedReason = sendBlockReason(otherStatuses);
+  const availabilityReason = sendBlockReason(otherStatuses);
+
+  // Priorita hlášek: nedostupný účet > blokace odesílatele > vlastní blokace.
+  const blockedReason = availabilityReason
+    ? availabilityReason
+    : block.otherBlockedViewer
+      ? BLOCKED_SEND_MESSAGE
+      : block.viewerBlockedOther
+        ? OUTGOING_BLOCK_MESSAGE
+        : null;
+
   const canSend =
     canSendToConversation(actor, { participantUserIds }) &&
     blockedReason === null;
@@ -174,5 +221,25 @@ export async function getConversationDetail(
     hasMoreOlder,
     canSend,
     blockedReason,
+    blockedByMe: block.viewerBlockedOther,
   };
+}
+
+/**
+ * Seznam uživatelů, které přihlášený zablokoval (pro nastavení — T031). Odblokování
+ * je vratná akce. Popisky se skládají stejně jako identity ve vlákně (titulek
+ * profilu / handle / „Zrušený účet").
+ */
+export async function getBlockedUsers(): Promise<BlockedUserSummary[]> {
+  const actor = await getActor();
+  if (actor.kind !== "user") return [];
+
+  const blocks = await listBlocksByUser(actor.userId);
+  const facts = await getIdentityFacts(blocks.map((b) => b.blockedUserId));
+
+  return blocks.map((b) => ({
+    userId: b.blockedUserId,
+    label: identityFrom(b.blockedUserId, facts).label,
+    blockedAt: b.createdAt.toISOString(),
+  }));
 }

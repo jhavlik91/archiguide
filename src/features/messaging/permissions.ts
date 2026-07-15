@@ -29,6 +29,9 @@ export const P_MESSAGING_ACCESS = "messaging.access_conversation";
 export const P_MESSAGING_SEND = "messaging.send_message";
 /** Zahájit konverzaci (kterýkoli přihlášený uživatel; návštěvník ne). */
 export const P_MESSAGING_START = "messaging.start_conversation";
+/** Nahlásit zprávu / zablokovat protistranu (jen účastník konverzace) — T031. */
+export const P_MESSAGING_REPORT = "messaging.report_message";
+export const P_MESSAGING_BLOCK = "messaging.block_participant";
 
 function actorIsParticipant(actor: Actor, subject: ConversationSubject): boolean {
   return isUser(actor) && isParticipant(subject.participantUserIds, actor.userId);
@@ -43,6 +46,14 @@ if (!isPermissionDefined(P_MESSAGING_SEND)) {
 }
 if (!isPermissionDefined(P_MESSAGING_START)) {
   definePermission(P_MESSAGING_START, (actor) => isUser(actor));
+}
+// Nahlásit i zablokovat smí jen účastník konverzace (matice — číst cizí zprávy:
+// nikdo; report zpřístupní moderátorovi obsah až přes T036, ne přímý přístup).
+if (!isPermissionDefined(P_MESSAGING_REPORT)) {
+  definePermission<ConversationSubject>(P_MESSAGING_REPORT, actorIsParticipant);
+}
+if (!isPermissionDefined(P_MESSAGING_BLOCK)) {
+  definePermission<ConversationSubject>(P_MESSAGING_BLOCK, actorIsParticipant);
 }
 
 /** Typovaný helper: smí actor konverzaci číst? */
@@ -64,4 +75,20 @@ export function canSendToConversation(
 /** Typovaný helper: smí actor zahájit konverzaci? */
 export function canStartConversation(actor: Actor): boolean {
   return can(actor, P_MESSAGING_START);
+}
+
+/** Typovaný helper: smí actor nahlásit zprávu v konverzaci (účastnictví)? */
+export function canReportInConversation(
+  actor: Actor,
+  subject: ConversationSubject,
+): boolean {
+  return can(actor, P_MESSAGING_REPORT, subject);
+}
+
+/** Typovaný helper: smí actor (od)blokovat protistranu konverzace (účastnictví)? */
+export function canBlockInConversation(
+  actor: Actor,
+  subject: ConversationSubject,
+): boolean {
+  return can(actor, P_MESSAGING_BLOCK, subject);
 }

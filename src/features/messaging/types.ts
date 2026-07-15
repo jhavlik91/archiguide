@@ -6,6 +6,14 @@
  * zprávy, velikost stránky) jsou jediným zdrojem pro validaci i UI.
  */
 
+import { type AttachmentView } from "@/features/attachments/types";
+
+/** Kontext přílohy zprávy: `message` + ID zprávy (T031). Sdílené klientem/serverem. */
+export const MESSAGE_ATTACHMENT_CONTEXT_TYPE = "message";
+
+/** Maximální počet příloh na jednu zprávu. */
+export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+
 /** Maximální délka jedné zprávy (znaky). Sdílené klientem i Zod validací. */
 export const MESSAGE_MAX_LENGTH = 5000;
 
@@ -83,6 +91,11 @@ export type MessageView = {
   /** Idempotenční token z klienta — pro slučování optimistických zpráv. */
   clientToken: string;
   replyTo: ReplyReference | null;
+  /**
+   * Přílohy zprávy (T031). Obrázky se vykreslí inline, ostatní jako karta;
+   * smazaná příloha nese `deleted: true` → placeholder. Prázdné u zpráv bez příloh.
+   */
+  attachments: AttachmentView[];
 };
 
 /** Popisek kontextu konverzace pro hlavičku (typ + volitelný odkaz). */
@@ -115,10 +128,20 @@ export type ConversationDetail = {
   messages: MessageView[];
   /** Jsou k dispozici starší zprávy nad rámec načtené stránky? */
   hasMoreOlder: boolean;
-  /** Smí divák do konverzace psát? (účastník + protistrana není zrušená/deakt.). */
+  /** Smí divák do konverzace psát? (účastník + protistrana dostupná + bez blokace). */
   canSend: boolean;
   /** Vysvětlení, proč je odeslání zablokované (`null` = lze psát). */
   blockedReason: string | null;
+  /** Zablokoval divák protistranu? Řídí zobrazení „odblokovat" (T031). */
+  blockedByMe: boolean;
+};
+
+/** Položka seznamu blokovaných uživatelů v nastavení (T031 § Main flow bod 2). */
+export type BlockedUserSummary = {
+  /** ID blokovaného uživatele (cíl akce odblokování). */
+  userId: string;
+  label: string;
+  blockedAt: string;
 };
 
 /** Zkrátí text na náhled (inbox, reply reference) bez rozseknutí uprostřed slova. */
