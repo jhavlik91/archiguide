@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { requestInputSchema } from "./validation";
+import { requestInputSchema, requestVisibilitySchema } from "./validation";
 
 /**
  * Testy validace vstupu poptávky (T024, §Validation): povinné ≥1 profese, region,
@@ -66,5 +66,24 @@ describe("requestInputSchema", () => {
     ).toBe(false);
     const ok = requestInputSchema.parse({ ...base, deadline: "2026-09-01" });
     expect(ok.deadline).toBe("2026-09-01");
+  });
+});
+
+describe("requestVisibilitySchema (T025)", () => {
+  it("přijme private/public", () => {
+    expect(requestVisibilitySchema.safeParse("private").success).toBe(true);
+    expect(requestVisibilitySchema.safeParse("public").success).toBe(true);
+  });
+
+  it("odmítne shared_link — UI selektor ho zatím nenabízí", () => {
+    expect(requestVisibilitySchema.safeParse("shared_link").success).toBe(
+      false,
+    );
+  });
+
+  it("odmítne neplatnou hodnotu", () => {
+    expect(requestVisibilitySchema.safeParse("visible-to-all").success).toBe(
+      false,
+    );
   });
 });

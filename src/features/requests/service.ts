@@ -12,11 +12,14 @@ import {
   nextStatus,
   type RequestAction,
 } from "./state-machine";
+import { buildRequestPublicView } from "./public-view";
 import type {
   RequestAuditItem,
   RequestListItem,
+  RequestPublicView,
   RequestStatus,
   RequestType,
+  RequestVisibility,
   RequestView,
 } from "./types";
 import type { ParsedRequestInput } from "./validation";
@@ -151,6 +154,29 @@ export async function getRequestById(
   return { ok: true, view: toView(expired ?? row) };
 }
 
+/** Fakta potřebná k rozhodnutí `canReadRequestPublicView` — bez plného řádku. */
+export interface RequestVisibilityMeta {
+  ownerUserId: string;
+  visibility: RequestVisibility;
+  status: RequestStatus;
+}
+
+/** Lehký dotaz pro permission vrstvu (T025) — nečte `briefSnapshot` ani texty. */
+export async function getRequestVisibilityMeta(
+  requestId: string,
+): Promise<RequestVisibilityMeta | null> {
+  const row = await db.request.findUnique({
+    where: { id: requestId },
+    select: { ownerUserId: true, visibility: true, status: true },
+  });
+  if (!row) return null;
+  return {
+    ownerUserId: row.ownerUserId,
+    visibility: row.visibility as RequestVisibility,
+    status: row.status as RequestStatus,
+  };
+}
+
 /** Poptávky vlastníka (dashboard), nejnovější první. Prošlé nejdřív expiruje. */
 export async function listRequestsForUser(
   ownerUserId: string,
@@ -189,6 +215,119 @@ export async function listRequestAudit(
     actorUserId: r.actorUserId,
     createdAt: r.createdAt.toISOString(),
   }));
+}
+
+// --- Viditelnost a anonymizace (T025) ---------------------------------------
+
+export type GetPublicRequestViewResult =
+  { ok: true; view: RequestPublicView } | { ok: false; reason: "not_found" };
+
+/**
+ * Anonymizovaná projekce poptávky (§20.2–20.3). Přístup NEŘEŠÍ (to dělá
+ * `canReadRequestPublicView` nad `getRequestVisibilityMeta` na volajícím) —
+ * tahle funkce jen sestaví whitelist DTO (`buildRequestPublicView`) z aktuálního
+ * řádku. Stejná expirační kontrola jako `getRequestById` (prošlá `active`
+ * poptávka se nikdy neukáže jako aktivní).
+ */
+export async function getPublicRequestView(
+  requestId: string,
+): Promise<GetPublicRequestViewResult> {
+  const row = await db.request.findUnique({ where: { id: requestId } });
+  if (!row) return { ok: false, reason: "not_found" };
+  const current = (await expireRowIfDue(row)) ?? row;
+
+  const briefContent = current.briefSnapshot
+    ? parseBriefContent(current.briefSnapshot)
+    : null;
+
+  return {
+    ok: true,
+    view: buildRequestPublicView(
+      {
+        id: current.id,
+        type: current.type as RequestType,
+        status: current.status as RequestStatus,
+        title: current.title,
+        targetProfessionSlugs: current.targetProfessionSlugs,
+        region: current.region,
+        budget: current.budget,
+        timeline: current.timeline,
+        deadline: current.deadline ? current.deadline.toISOString() : null,
+        publishedAt: current.publishedAt
+          ? current.publishedAt.toISOString()
+          : null,
+      },
+      briefContent,
+    ),
+  };
+}
+
+/**
+ * Nastaví viditelnost poptávky (main flow bod 1, alternative flow — změna
+ * `public → private` po publikaci). Ortogonální ke stavovému automatu (§ States)
+ * — funguje v jakémkoli stavu, žádné omezení na draft/publikováno. Sanitizační
+ * kontrolu a potvrzení (main flow bod 4) řeší volající akce PŘED zápisem.
+ */
+export async function setRequestVisibility(
+  requestId: string,
+  visibility: RequestVisibility,
+): Promise<UpdateRequestResult> {
+  const row = await db.request.findUnique({ where: { id: requestId } });
+  if (!row) return { ok: false, reason: "not_found" };
+
+  const updated = await db.request.update({
+    where: { id: requestId },
+    data: { visibility },
+  });
+  trackEvent("request.visibility_changed", { requestId, visibility });
+  return { ok: true, view: toView(updated) };
+}
+
+/** Je daný uživatel pozvaný k neveřejné poptávce (`RequestInvite`)? */
+export async function isUserInvitedToRequest(
+  requestId: string,
+  userId: string,
+): Promise<boolean> {
+  const invite = await db.requestInvite.findUnique({
+    where: { requestId_invitedUserId: { requestId, invitedUserId: userId } },
+    select: { id: true },
+  });
+  return invite !== null;
+}
+
+export type InviteResult = { ok: true } | { ok: false; reason: "not_found" };
+
+/**
+ * Pozve profesionála k neveřejné poptávce. Datový základ pro matching UI
+ * (T029) — tady jen idempotentní zápis (opětovné pozvání téhož kandidáta se
+ * nerozbije, §Edge cases). Vlastnictví/oprávnění ověří volající.
+ */
+export async function inviteProfessionalToRequest(params: {
+  requestId: string;
+  invitedUserId: string;
+  invitedByUserId: string;
+}): Promise<InviteResult> {
+  const row = await db.request.findUnique({
+    where: { id: params.requestId },
+    select: { id: true },
+  });
+  if (!row) return { ok: false, reason: "not_found" };
+
+  await db.requestInvite.upsert({
+    where: {
+      requestId_invitedUserId: {
+        requestId: params.requestId,
+        invitedUserId: params.invitedUserId,
+      },
+    },
+    create: {
+      requestId: params.requestId,
+      invitedUserId: params.invitedUserId,
+      invitedByUserId: params.invitedByUserId,
+    },
+    update: {},
+  });
+  return { ok: true };
 }
 
 // --- Editace ----------------------------------------------------------------

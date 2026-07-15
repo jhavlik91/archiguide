@@ -4,6 +4,7 @@ import {
   canCreateRequest,
   canPublishRequest,
   canReadRequest,
+  canReadRequestPublicView,
   canWriteRequest,
 } from "./permissions";
 
@@ -115,5 +116,65 @@ describe("canPublishRequest — dle matice", () => {
     expect(
       canPublishRequest(stranger, { ownerUserId: OWNER, type: "b2c" }),
     ).toBe(false);
+  });
+});
+
+describe("canReadRequestPublicView — anonymizovaná projekce (T025)", () => {
+  it("vlastník/admin vidí náhled i v draftu (main flow bod 6)", () => {
+    const subject = {
+      ownerUserId: OWNER,
+      visibility: "private" as const,
+      status: "draft" as const,
+      isInvited: false,
+    };
+    expect(canReadRequestPublicView(client, subject)).toBe(true);
+    expect(canReadRequestPublicView(admin, subject)).toBe(true);
+  });
+
+  it("draft nevidí cizí uživatel, i kdyby byl pozvaný", () => {
+    expect(
+      canReadRequestPublicView(stranger, {
+        ownerUserId: OWNER,
+        visibility: "public",
+        status: "draft",
+        isInvited: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("veřejnou publikovanou poptávku vidí kdokoli, i návštěvník", () => {
+    const subject = {
+      ownerUserId: OWNER,
+      visibility: "public" as const,
+      status: "active" as const,
+      isInvited: false,
+    };
+    expect(canReadRequestPublicView(stranger, subject)).toBe(true);
+    expect(canReadRequestPublicView(VISITOR, subject)).toBe(true);
+  });
+
+  it("neveřejnou poptávku vidí jen pozvaný, cizí a návštěvník ne", () => {
+    const subject = {
+      ownerUserId: OWNER,
+      visibility: "private" as const,
+      status: "active" as const,
+      isInvited: false,
+    };
+    expect(canReadRequestPublicView(stranger, subject)).toBe(false);
+    expect(canReadRequestPublicView(VISITOR, subject)).toBe(false);
+    expect(
+      canReadRequestPublicView(stranger, { ...subject, isInvited: true }),
+    ).toBe(true);
+  });
+
+  it("shared_link se chová jako public — kdokoli", () => {
+    expect(
+      canReadRequestPublicView(VISITOR, {
+        ownerUserId: OWNER,
+        visibility: "shared_link",
+        status: "active",
+        isInvited: false,
+      }),
+    ).toBe(true);
   });
 });
