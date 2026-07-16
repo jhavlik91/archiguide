@@ -99,6 +99,10 @@ export type AnalyticsEvent =
   | "match_computed"
   | "match_dismissed"
   | "match_shortlisted"
+  // Matching UI (T029) — jména dle tasku (§ Analytics), ne dotted konvence.
+  | "match_shown"
+  | "match_profile_viewed"
+  | "match_invited"
   // Administrace — uživatelé a taxonomie (T035)
   | "admin_user_suspended"
   | "admin_role_changed"

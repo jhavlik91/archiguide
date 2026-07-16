@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { trackEvent } from "@/lib/analytics";
 import { parseBriefContent } from "@/features/brief/content";
+import { listPublicPortfolioForUser } from "@/features/portfolio/queries";
 import {
   computeProfileCompleteness,
   scoreCandidate,
@@ -12,6 +13,8 @@ import {
 import { canTransitionMatchStatus } from "./status";
 import type {
   EmptyMatchReason,
+  MatchCandidateBadge,
+  MatchCandidateCard,
   MatchReason,
   MatchRecommendationStatus,
   MatchRecommendationView,
@@ -89,18 +92,15 @@ async function findConflictedUserIds(
   return conflicted;
 }
 
-/** Uživatelé s ≥1 ověřením typu telefon/e-mail (T011). */
+/**
+ * Uživatelé s ≥1 ověřením typu telefon/e-mail (T011). Odvozeno z
+ * `loadVerifiedBadges` (T029) — stejný dotaz, jen jiný tvar výstupu; držet dvě
+ * nezávislé kopie stejného `where` by časem mohlo rozejít eligibilitu skórování
+ * a zobrazené odznaky.
+ */
 async function loadVerifiedUserIds(userIds: string[]): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set();
-  const rows = await db.verification.findMany({
-    where: {
-      userId: { in: userIds },
-      status: "verified",
-      type: { in: ["phone", "email"] },
-    },
-    select: { userId: true },
-  });
-  return new Set(rows.map((r) => r.userId));
+  const badges = await loadVerifiedBadges(userIds);
+  return new Set(badges.keys());
 }
 
 /** Počet publikovaných (nesmazaných) portfolio projektů na uživatele. */
@@ -319,6 +319,73 @@ export async function getRecommendations(
   };
 }
 
+/**
+ * Vlastník, kandidát a stavy (doporučení + poptávky) — vstup pro oprávnění A
+ * doménové invarianty v `actions.ts` (T029). Stavy jsou tu proto, aby
+ * `inviteMatchCandidateAction` mohl odmítnout pozvání skrytého kandidáta nebo
+ * poptávky mimo aktivní fázi, aniž by na to spoléhal jen klient (skryté
+ * tlačítko v UI nikoho nezastaví, kdo zavolá akci přímo).
+ */
+export interface RecommendationContext {
+  requestId: string;
+  ownerUserId: string;
+  candidateUserId: string;
+  status: MatchRecommendationStatus;
+  requestStatus: string;
+}
+
+/**
+ * Načte kontext doporučení (vlastník poptávky + kandidát + stavy) potřebný
+ * k ověření oprávnění a k pozvání kandidáta (T029). `actions.ts` s ním nesahá
+ * na `db.matchRecommendation` přímo — jediné místo zůstává tahle service vrstva.
+ */
+export async function getRecommendationContext(
+  recommendationId: string,
+): Promise<RecommendationContext | null> {
+  const row = await db.matchRecommendation.findUnique({
+    where: { id: recommendationId },
+    select: {
+      requestId: true,
+      candidateUserId: true,
+      status: true,
+      request: { select: { ownerUserId: true, status: true } },
+    },
+  });
+  if (!row) return null;
+  return {
+    requestId: row.requestId,
+    ownerUserId: row.request.ownerUserId,
+    candidateUserId: row.candidateUserId,
+    status: row.status as MatchRecommendationStatus,
+    requestStatus: row.request.status,
+  };
+}
+
+/**
+ * Přesune čerstvá doporučení (`new`) do stavu `shown` — první zobrazení
+ * vlastníkovi na detailu poptávky JE „shown" (§ States). Volá se při čtení
+ * stránky (server), nikdy z klienta. Vrací doporučení s aktualizovaným stavem,
+ * aby je UI vykreslilo konzistentně bez dalšího načtení.
+ */
+export async function markRecommendationsShown(
+  requestId: string,
+  recommendations: MatchRecommendationView[],
+): Promise<MatchRecommendationView[]> {
+  const newOnes = recommendations.filter((r) => r.status === "new");
+  if (newOnes.length === 0) return recommendations;
+
+  await db.matchRecommendation.updateMany({
+    where: { id: { in: newOnes.map((r) => r.id) } },
+    data: { status: "shown" },
+  });
+  trackEvent("match_shown", { requestId, count: newOnes.length });
+
+  const shownIds = new Set(newOnes.map((r) => r.id));
+  return recommendations.map((r) =>
+    shownIds.has(r.id) ? { ...r, status: "shown" as const } : r,
+  );
+}
+
 export type UpdateStatusResult =
   | { ok: true; view: MatchRecommendationView }
   | { ok: false; reason: "not_found" | "invalid_transition" };
@@ -359,4 +426,108 @@ export async function updateRecommendationStatus(
   }
 
   return { ok: true, view: toView(updated) };
+}
+
+/** Krátký úryvek bia pro kartu (stejná logika jako `features/search/service.ts`). */
+function snippet(bio: string | null): string | null {
+  const text = bio?.trim().replace(/\s+/g, " ");
+  if (!text) return null;
+  return text.length > 160 ? `${text.slice(0, 157)}…` : text;
+}
+
+/** Ověřené badge (telefon/e-mail) na uživatele (stejný tvar jako `search/service.ts`). */
+async function loadVerifiedBadges(
+  userIds: string[],
+): Promise<Map<string, MatchCandidateBadge[]>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await db.verification.findMany({
+    where: {
+      userId: { in: userIds },
+      status: "verified",
+      type: { in: ["phone", "email"] },
+    },
+    select: { userId: true, type: true },
+  });
+  const map = new Map<string, MatchCandidateBadge[]>();
+  for (const row of rows) {
+    const list = map.get(row.userId) ?? [];
+    list.push(row.type as MatchCandidateBadge);
+    map.set(row.userId, list);
+  }
+  return map;
+}
+
+/**
+ * Hydratuje veřejné kandidátní karty (jméno, profese, region, portfolio,
+ * ověření) k `candidateUserId` z doporučení (T029 § Main flow bod 1).
+ * `MatchRecommendationView` sama nese jen ID — karta je oddělená hydratace,
+ * stejný princip jako `hydrateCards` v `features/search/service.ts`, jen
+ * klíčovaná `userId` místo `profile.id`. Kandidát bez slugu (profil bez
+ * publikace) se v mapě neobjeví — na kartu nemá kam odkázat.
+ */
+export async function hydrateMatchCandidates(
+  candidateUserIds: string[],
+): Promise<Map<string, MatchCandidateCard>> {
+  if (candidateUserIds.length === 0) return new Map();
+
+  const [profiles, badgesByUser] = await Promise.all([
+    db.professionalProfile.findMany({
+      where: { userId: { in: candidateUserIds } },
+      select: {
+        userId: true,
+        slug: true,
+        headline: true,
+        bio: true,
+        location: true,
+        serviceAreas: true,
+        professions: {
+          orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+          select: {
+            isPrimary: true,
+            profession: { select: { slug: true, name: true } },
+          },
+        },
+      },
+    }),
+    loadVerifiedBadges(candidateUserIds),
+  ]);
+
+  // `allSettled`, ne `all`: selhání portfolia jednoho kandidáta (výpadek DB,
+  // poškozený snapshot) nesmí strhnout hydrataci celé stránky — takový
+  // kandidát prostě v mapě chybí, stejně jako kandidát bez slugu.
+  const settled = await Promise.allSettled(
+    profiles
+      .filter((p): p is typeof p & { slug: string } => p.slug !== null)
+      .map(async (p): Promise<[string, MatchCandidateCard]> => {
+        const portfolio = await listPublicPortfolioForUser(p.userId);
+        return [
+          p.userId,
+          {
+            candidateUserId: p.userId,
+            slug: p.slug,
+            headline: p.headline?.trim() || "Profesionál",
+            professions: p.professions.map((link) => ({
+              slug: link.profession.slug,
+              name: link.profession.name,
+              isPrimary: link.isPrimary,
+            })),
+            location: p.location,
+            region: p.serviceAreas[0] ?? null,
+            bioSnippet: snippet(p.bio),
+            portfolioCoverUrl: portfolio[0]?.coverImageUrl ?? null,
+            publishedProjectCount: portfolio.length,
+            badges: badgesByUser.get(p.userId) ?? [],
+          },
+        ];
+      }),
+  );
+
+  const entries = settled
+    .filter(
+      (r): r is PromiseFulfilledResult<[string, MatchCandidateCard]> =>
+        r.status === "fulfilled",
+    )
+    .map((r) => r.value);
+
+  return new Map(entries);
 }

@@ -210,7 +210,7 @@ Migrace T034 přidává jen rozšíření `unaccent`; nemění cizí tabulky (T0
 Server-side doporučení profesionálů k poptávce (`MatchRecommendation`) —
 kandidátní seznam se skóre a **strukturovanými, vysvětlitelnými důvody**. MVP =
 deterministická váhová pravidla (`features/matching/config.ts`), žádné
-ML/embeddings. Bez vlastního UI (to řeší T029) — spotřebovává se přes
+ML/embeddings. UI nad tímhle enginem řeší T029 — spotřebovává se přes
 `features/matching/service.ts`.
 
 - **Profese je tvrdá podmínka**: kandidát bez shodné profese se do výpočtu
@@ -233,9 +233,35 @@ ML/embeddings. Bez vlastního UI (to řeší T029) — spotřebovává se přes
   (`shown`/`shortlisted`/`dismissed`) se zachová, mění se jen skóre/důvody.
   Kandidát, který přestane vyhovovat, se z doporučení vyfiltruje i bez nového
   přepočtu (lazy read) a při dalším přepočtu se fyzicky smaže.
-- **Stavy** doporučení: `new → shown → shortlisted | dismissed` (bez zpětných
-  přechodů), `features/matching/status.ts` je zdroj pravdy.
+- **Stavy** doporučení: `new → shown → shortlisted | dismissed`,
+  `dismissed → shown` (obnovení skrytého — jediný zpětný přechod, T029),
+  `features/matching/status.ts` je zdroj pravdy.
 - **Sponzorované pozice**: pole `sponsored` existuje, v MVP vždy `false`.
+
+## Matching UI (T029)
+
+Sekce „Doporučení profesionálové" na detailu vlastní poptávky
+(`/requests/[id]`) — kandidátní karty nad enginem z T028, se třemi záložkami
+(doporučení / užší výběr / skryté) a akcemi shortlist/dismiss/oslovit.
+
+- **Lidsky čitelná věta z reasons**: `features/matching/reasons.ts`
+  (`formatReasons`) skládá strukturované důvody enginu do jedné souvislé věty
+  („Doporučeno, protože…") — nepřidává žádný fakt, který engine sám nevrátil.
+- **Karta** (`RecommendationCard`) zobrazuje portfolio náhled, profesi, region,
+  ověřovací odznaky (T011) a slot pro „Sponzorováno" (`sponsored`, v MVP vždy
+  `false`, ale komponenta ho umí vykreslit — Storybook stav `Sponsored`).
+- **Dismiss je vratný** — `dismissed → shown` je jediný zpětný přechod
+  přidaný nad T028 (`restoreMatchAction`); shortlist zůstává terminální.
+- **První zobrazení = „shown"**: server při čtení stránky (ne klient) posune
+  čerstvá (`new`) doporučení do `shown` a zaznamená `match_shown`.
+- **Oslovit**: u neveřejné poptávky vytvoří reálný `RequestInvite` (T025,
+  idempotentní); u veřejné poptávky T027 „reakce na poptávku" ještě neexistuje,
+  takže UI místo předstírané akce nabídne jen odkaz na veřejnou stránku
+  poptávky.
+- **Prázdný stav** rozlišuje dvě situace: engine nenašel žádného vhodného
+  kandidáta vůbec (`emptyReason` z T028, poctivé vysvětlení + doporučené
+  kroky) vs. jednotlivá záložka je prázdná, protože všichni kandidáti jsou už
+  jinde (např. všichni v užším výběru) — obojí dostane vlastní, konkrétní text.
 
 ## Požadavky
 

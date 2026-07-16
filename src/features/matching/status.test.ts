@@ -6,8 +6,9 @@ import {
 import { canTransitionMatchStatus, isTerminalMatchStatus } from "./status";
 
 /**
- * Testy stavového automatu doporučení (T028 § States: „new → shown →
- * shortlisted | dismissed"). Žádné zpětné přechody v MVP.
+ * Testy stavového automatu doporučení (T028 § States + T029 § Main flow bod 4:
+ * „new → shown → shortlisted | dismissed", `dismissed → shown` = obnovení
+ * skrytého, jediný zpětný přechod v MVP).
  */
 
 describe("povolené přechody", () => {
@@ -17,6 +18,7 @@ describe("povolené přechody", () => {
     ["new", "shown"],
     ["shown", "shortlisted"],
     ["shown", "dismissed"],
+    ["dismissed", "shown"],
   ];
 
   it.each(ALLOWED)("%s -> %s", (from, to) => {
@@ -32,7 +34,6 @@ describe("neplatné přechody", () => {
     ["new", "dismissed"],
     ["shortlisted", "shown"],
     ["shortlisted", "dismissed"],
-    ["dismissed", "shown"],
     ["dismissed", "shortlisted"],
   ];
 
@@ -42,9 +43,9 @@ describe("neplatné přechody", () => {
 });
 
 describe("terminální stavy", () => {
-  it("shortlisted a dismissed jsou terminální; new a shown ne", () => {
+  it("shortlisted je terminální; dismissed jde obnovit; new a shown nejsou terminální", () => {
     expect(isTerminalMatchStatus("shortlisted")).toBe(true);
-    expect(isTerminalMatchStatus("dismissed")).toBe(true);
+    expect(isTerminalMatchStatus("dismissed")).toBe(false);
     expect(isTerminalMatchStatus("new")).toBe(false);
     expect(isTerminalMatchStatus("shown")).toBe(false);
   });
