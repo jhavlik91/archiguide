@@ -379,10 +379,19 @@ describe("transitionResponse", () => {
 
 describe("listResponsesForRequest / getResponseForAuthor", () => {
   it("nastaví `viewed` u dosud `sent` reakcí při čtení vlastníkem", async () => {
+    seedRequest();
     seedResponse({ status: "sent" });
     const list = await listResponsesForRequest("req_1", "u-owner");
     expect(list).toHaveLength(1);
     expect(list[0]!.status).toBe("viewed");
+  });
+
+  it("čtení ne-vlastníkem (admin/support) `viewed` nenastaví", async () => {
+    seedRequest();
+    seedResponse({ status: "sent" });
+    const list = await listResponsesForRequest("req_1", "u-admin");
+    expect(list).toHaveLength(1);
+    expect(list[0]!.status).toBe("sent");
   });
 
   it("getResponseForAuthor najde reakci konkrétního autora", async () => {

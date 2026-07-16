@@ -362,21 +362,28 @@ export async function getResponseForAuthor(
 
 /**
  * Reakce na poptávce pro VLASTNÍKA (main flow bod 5). Nastaví `viewed` u
- * dosud `sent` reakcí — první zobrazení vlastníkem (main flow bod 3).
+ * dosud `sent` reakcí — jen při prvním zobrazení VLASTNÍKEM (main flow bod 3).
+ * Detail smí číst i admin (`canReadRequest`) — jeho čtení ale „zobrazení
+ * vlastníkem" není, takže přechod (ani notifikaci autorovi) nespouští.
  */
 export async function listResponsesForRequest(
   requestId: string,
   viewerUserId: string,
 ): Promise<ResponseListItemForOwner[]> {
+  const request = await db.request.findUnique({
+    where: { id: requestId },
+    select: { ownerUserId: true },
+  });
   const rows = await db.requestResponse.findMany({
     where: { requestId },
     include: responseInclude,
     orderBy: { createdAt: "desc" },
   });
 
-  const current = await Promise.all(
-    rows.map((row) => markViewedIfDue(row, viewerUserId)),
-  );
+  const isOwner = request !== null && request.ownerUserId === viewerUserId;
+  const current = isOwner
+    ? await Promise.all(rows.map((row) => markViewedIfDue(row, viewerUserId)))
+    : rows;
 
   return Promise.all(
     current.map(async (row) => ({

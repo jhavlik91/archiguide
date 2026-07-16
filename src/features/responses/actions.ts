@@ -67,6 +67,13 @@ export async function submitResponseAction(
     ? { type: "organization", orgId: authorOrgId }
     : { type: "user", userId: actor.userId };
 
+  // Doménový invariant: na vlastní poptávku se nereaguje. UI formulář vlastníkovi
+  // vůbec nenabídne (`isManager` na veřejném detailu), server to ale musí
+  // vynutit i při přímém volání akce.
+  if (author.type === "user" && author.userId === meta.ownerUserId) {
+    return { ok: false, error: "Na vlastní poptávku nelze reagovat." };
+  }
+
   const isOrgEditor = await resolveIsOrgEditor(actor, author);
   const isInvited = await isUserInvitedToRequest(requestId, actor.userId);
 

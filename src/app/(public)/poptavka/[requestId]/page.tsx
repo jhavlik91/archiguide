@@ -13,6 +13,7 @@ import {
   canReadRequest,
   canReadRequestPublicView,
 } from "@/features/requests/permissions";
+import { hasRole } from "@/lib/permissions";
 import { getProfessionsBySlugs } from "@/features/taxonomy/queries";
 import { BriefContentView } from "@/features/brief/components/brief-content-view";
 import { Badge } from "@/components/ui/badge";
@@ -155,7 +156,11 @@ export default async function PublicRequestPage({
 
       {!isManager ? (
         view.status === "active" && actor.kind === "user" ? (
-          <ResponseSection requestId={requestId} userId={actor.userId} />
+          hasRole(actor, "professional") ? (
+            <ResponseSection requestId={requestId} userId={actor.userId} />
+          ) : (
+            <ProfessionalOnlyNotice />
+          )
         ) : (
           <ResponseCta requestId={requestId} status={view.status} />
         )
@@ -192,6 +197,26 @@ async function ResponseSection({
       existing={existing}
       portfolioOptions={portfolioOptions}
     />
+  );
+}
+
+/**
+ * Přihlášený BEZ role profesionála (T027 — permission matice: reagovat smí jen
+ * profesionál/firma). Formulář by mu k ničemu nebyl — odeslání by server vždy
+ * odmítl; místo něj dostane vysvětlení rovnou.
+ */
+function ProfessionalOnlyNotice() {
+  return (
+    <div className="space-y-2">
+      <Button disabled>
+        <Send />
+        Reagovat na poptávku
+      </Button>
+      <p className="text-muted-foreground text-sm">
+        Na poptávky mohou reagovat jen profesionálové. Pokud služby nabízíte,
+        dokončete si nejdřív profesní profil.
+      </p>
+    </div>
   );
 }
 
