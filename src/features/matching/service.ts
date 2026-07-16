@@ -374,8 +374,11 @@ export async function markRecommendationsShown(
   const newOnes = recommendations.filter((r) => r.status === "new");
   if (newOnes.length === 0) return recommendations;
 
+  // `status: "new"` i ve where: mezi načtením a zápisem mohl stav změnit
+  // souběžný požadavek (přepočet enginu, jiná záložka) — přepsat smíme jen
+  // dosud čerstvé řádky, ne cizí přechod.
   await db.matchRecommendation.updateMany({
-    where: { id: { in: newOnes.map((r) => r.id) } },
+    where: { id: { in: newOnes.map((r) => r.id) }, status: "new" },
     data: { status: "shown" },
   });
   trackEvent("match_shown", { requestId, count: newOnes.length });
