@@ -17,6 +17,8 @@ import {
 import type { PublicProfile } from "../../service";
 import type { PublicPortfolioCard } from "@/features/portfolio/queries";
 import { PortfolioProjectGrid } from "@/features/portfolio/components/public/portfolio-project-grid";
+import { ReviewSection } from "@/features/reviews/components/public/review-section";
+import type { ReviewAggregate, ReviewView } from "@/features/reviews/types";
 import { ContactCta } from "./contact-cta";
 import { ExpandableText } from "./expandable-text";
 
@@ -77,6 +79,7 @@ export function PublicProfile({
   isOwner,
   isAuthenticated,
   projects = [],
+  reviews = null,
 }: {
   profile: PublicProfile;
   mode: "public" | "preview";
@@ -84,6 +87,8 @@ export function PublicProfile({
   isAuthenticated: boolean;
   /** Publikované projekty profesionála (T016 § Main flow #4). */
   projects?: PublicPortfolioCard[];
+  /** Hodnocení profesionála (T037) — výsledek `getReviewsForTarget`. */
+  reviews?: { aggregate: ReviewAggregate; reviews: ReviewView[] } | null;
 }) {
   const primary = profile.professions.find((p) => p.isPrimary);
   const secondary = profile.professions.filter((p) => !p.isPrimary);
@@ -272,9 +277,20 @@ export function PublicProfile({
             </Section>
           )}
 
+          {/* Hodnocení (T037) — jen s daty (prázdná sekce se nezobrazuje). */}
+          {reviews && reviews.reviews.length > 0 && (
+            <Section title="Hodnocení">
+              <ReviewSection
+                aggregate={reviews.aggregate}
+                reviews={reviews.reviews}
+                isOwner={isOwner}
+              />
+            </Section>
+          )}
+
           {/*
             Sloty pro budoucí sekce — vykreslí je až příslušné tasky:
-            verifikační badge (T011), hodnocení (T037), služby.
+            verifikační badge (T011), služby.
             Dokud nemají data, sekce se nezobrazují (T008 § Main flow).
           */}
         </div>

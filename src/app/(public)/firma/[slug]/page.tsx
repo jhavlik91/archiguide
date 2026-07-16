@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { trackEvent } from "@/lib/analytics";
+import { getActor } from "@/lib/session";
 import { getPublicOrganization } from "@/features/organizations/queries";
+import { getMembershipRole } from "@/features/organizations/service";
+import { roleAtLeast } from "@/features/organizations/rules";
 import { listPublicPortfolioForOrg } from "@/features/portfolio/queries";
 import { PublicOrganization } from "@/features/organizations/components/public/public-organization";
+import { getReviewsForTarget } from "@/features/reviews/service";
 
 /**
  * T010 — veřejná stránka firmy (`/firma/[slug]`).
@@ -67,5 +71,24 @@ export default async function OrganizationPublicPage({
   // Publikované projekty firmy pro sekci Portfolio (T016).
   const projects = await listPublicPortfolioForOrg(org.id);
 
-  return <PublicOrganization org={org} projects={projects} />;
+  // Hodnocení firmy (T037). Editor+ firmy vidí u recenzí reply/dispute akce —
+  // stránka je veřejná (bez requireUser), takže membership zjišťujeme jen pro
+  // přihlášeného uživatele.
+  const reviews = await getReviewsForTarget({
+    type: "organization",
+    orgId: org.id,
+  });
+  const actor = await getActor();
+  const isEditor =
+    actor.kind === "user" &&
+    roleAtLeast(await getMembershipRole(org.id, actor.userId), "editor");
+
+  return (
+    <PublicOrganization
+      org={org}
+      projects={projects}
+      reviews={reviews}
+      isEditor={isEditor}
+    />
+  );
 }

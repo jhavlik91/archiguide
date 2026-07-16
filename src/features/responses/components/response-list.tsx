@@ -9,6 +9,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { ReportButton } from "@/features/moderation/components/report-button";
 import { PRICING_MODEL_LABELS } from "@/features/profiles/types";
+import {
+  ReviewCallToAction,
+  type ReviewCtaState,
+} from "@/features/reviews/components/review-cta";
 import { acceptResponseAction, shortlistResponseAction } from "../actions";
 import { ownerResponseActions, type ResponseAction } from "../state-machine";
 import {
@@ -25,8 +29,11 @@ import { RejectResponseDialog } from "./reject-response-dialog";
  */
 export function ResponseList({
   responses,
+  reviewCtas = {},
 }: {
   responses: ResponseListItemForOwner[];
+  /** CTA hodnocení (T037) — klíč = id accepted reakce, hodnota = stav recenze. */
+  reviewCtas?: Record<string, ReviewCtaState | null>;
 }) {
   if (responses.length === 0) {
     return (
@@ -40,11 +47,17 @@ export function ResponseList({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-semibold">
-        Reakce ({responses.length})
-      </p>
+      <p className="text-sm font-semibold">Reakce ({responses.length})</p>
       {responses.map((response) => (
-        <ResponseCard key={response.id} response={response} />
+        <ResponseCard
+          key={response.id}
+          response={response}
+          reviewCta={
+            response.id in reviewCtas
+              ? { review: reviewCtas[response.id] }
+              : null
+          }
+        />
       ))}
     </div>
   );
@@ -68,7 +81,14 @@ const ACTION_LABELS: Record<ResponseAction, string> = {
   withdraw: "Stáhnout",
 };
 
-function ResponseCard({ response }: { response: ResponseListItemForOwner }) {
+function ResponseCard({
+  response,
+  reviewCta,
+}: {
+  response: ResponseListItemForOwner;
+  /** `null` = CTA nezobrazovat; jinak stav recenze (`review: null` = ještě bez ní). */
+  reviewCta: { review: ReviewCtaState | null } | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -145,7 +165,11 @@ function ResponseCard({ response }: { response: ResponseListItemForOwner }) {
           ) : null}
           {actions.includes("accept") ? (
             <Button size="sm" disabled={pending} onClick={() => run("accept")}>
-              {pending ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+              {pending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <CheckCircle2 />
+              )}
               {ACTION_LABELS.accept}
             </Button>
           ) : null}
@@ -159,6 +183,13 @@ function ResponseCard({ response }: { response: ResponseListItemForOwner }) {
               <X />
               {ACTION_LABELS.reject}
             </Button>
+          ) : null}
+          {reviewCta ? (
+            <ReviewCallToAction
+              evidenceResponseId={response.id}
+              targetName={response.authorSummary.displayName}
+              review={reviewCta.review}
+            />
           ) : null}
           <ReportButton
             targetType="request_response"

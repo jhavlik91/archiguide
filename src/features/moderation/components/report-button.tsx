@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { reportContentAction } from "../actions";
 import {
-  REPORT_REASONS,
+  GENERIC_REPORT_REASONS,
   REPORT_REASON_LABELS,
   type ReportReason,
   type ReportTargetType,
@@ -112,7 +112,7 @@ export function ReportButton({
                 <SelectValue placeholder="Vyberte důvod" />
               </SelectTrigger>
               <SelectContent>
-                {REPORT_REASONS.map((r) => (
+                {GENERIC_REPORT_REASONS.map((r) => (
                   <SelectItem key={r} value={r}>
                     {REPORT_REASON_LABELS[r]}
                   </SelectItem>

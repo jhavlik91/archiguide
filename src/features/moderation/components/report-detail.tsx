@@ -213,6 +213,24 @@ function TargetPreviewCard({
             ) : null}
           </div>
         )}
+        {preview.kind === "review" ? (
+          <div className="space-y-1 text-sm">
+            <p className="font-medium">
+              Hodnocení „{preview.targetLabel}“ — {preview.averageRating}/5
+            </p>
+            {preview.text ? (
+              <p className="text-muted-foreground whitespace-pre-wrap">
+                {preview.text}
+              </p>
+            ) : null}
+            <p className="text-muted-foreground">
+              Recenzent:{" "}
+              {preview.reviewerUserId
+                ? label(preview.reviewerUserId)
+                : "bývalý uživatel"}
+            </p>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

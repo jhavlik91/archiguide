@@ -21,7 +21,8 @@ type ReportReason =
   | "dangerous_advice"
   | "copyright"
   | "impersonation"
-  | "illegal_solicitation";
+  | "illegal_solicitation"
+  | "review_dispute";
 
 /**
  * Přímý přístup do DB z e2e testů (T004) — jen pro přípravu stavu, který nelze
@@ -334,6 +335,67 @@ export async function seedPublishedProfessionalProfile(params: {
     },
     update: { isPrimary: true },
   });
+}
+
+// --- Hodnocení (T037) --------------------------------------------------------
+// Spor hodnoceného vzniká přes UI (viz reviews.spec.ts, hlavní flow); pro test
+// moderační strany (fronta → náhled → hide) seedujeme rozporovanou recenzi
+// přímo — celý řetěz recenzent→poptávka→accepted reakce→recenze→report by přes
+// UI trval desítky kroků (stejný princip jako `seedConversation` výše).
+
+/** Rozporovaná recenze profesionála + otevřený případ `review_dispute`. */
+export async function seedDisputedReview(params: {
+  targetUserId: string;
+  text: string;
+}): Promise<{ reviewId: string; reportId: string }> {
+  const reviewer = await db.user.create({
+    data: {
+      email: `review-seed-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`,
+    },
+  });
+  const request = await db.request.create({
+    data: {
+      ownerUserId: reviewer.id,
+      title: "Seed poptávka pro recenzi",
+      type: "b2c",
+      status: "active",
+      visibility: "public",
+      targetProfessionSlugs: ["architekt"],
+      region: "Praha",
+      publishedAt: new Date(),
+    },
+  });
+  const response = await db.requestResponse.create({
+    data: {
+      requestId: request.id,
+      authorUserId: params.targetUserId,
+      status: "accepted",
+      message: "Seed reakce pro recenzi",
+    },
+  });
+  const review = await db.review.create({
+    data: {
+      reviewerUserId: reviewer.id,
+      targetUserId: params.targetUserId,
+      evidenceResponseId: response.id,
+      ratingCommunication: 1,
+      ratingQuality: 2,
+      ratingTimeliness: 1,
+      ratingTransparency: 2,
+      ratingProfessionalism: 1,
+      text: params.text,
+      status: "disputed",
+      disputeReason: "Hodnocení neodpovídá průběhu zakázky.",
+      disputedAt: new Date(),
+    },
+  });
+  const reportId = await seedReport({
+    targetType: "review",
+    targetId: review.id,
+    reporterUserId: params.targetUserId,
+    reason: "review_dispute",
+  });
+  return { reviewId: review.id, reportId };
 }
 
 /** Založí doporučení přímo (bez volání matching enginu — testuje se jen UI). */

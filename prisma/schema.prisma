@@ -79,6 +79,8 @@ model User {
   moderationFlagEdits         ModerationFlag[] // T036 (kdo naposledy změnil moderační stav cíle)
   requestResponses            RequestResponse[] // T027 (autor reakce = uživatel)
   requestResponseAuditEntries RequestResponseAuditEntry[] // T027 (aktér auditovaného přechodu reakce)
+  reviewsWritten              Review[]                     @relation("ReviewsWritten") // T037 (autor recenze)
+  reviewsReceived             Review[]                     @relation("ReviewsReceivedByUser") // T037 (hodnocený profesionál)
 
   @@map("users")
 }
@@ -434,6 +436,7 @@ model Organization {
   portfolioProjects PortfolioProject[] // T012 (owner = organizace)
   mediaAssets       MediaAsset[] // T014 (owner = organizace)
   requestResponses  RequestResponse[] // T027 (autor reakce = organizace)
+  reviewsReceived   Review[] // T037 (hodnocená firma)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1656,6 +1659,9 @@ model RequestResponse {
   /// `service.ts`; FK sem jen odkazuje na existující entitu).
   portfolioItems RequestResponsePortfolioItem[]
   auditEntries   RequestResponseAuditEntry[]
+  /// Recenze založená nad touto interakcí (T037), pokud existuje — `@unique`
+  /// na `Review.evidenceResponseId` dělá vztah 1:1.
+  review         Review?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1833,7 +1839,11 @@ enum ReportTargetType {
   request_response
 }
 
-/// Důvod nahlášení (zadani/12 §4 — Reportable content).
+/// Důvod nahlášení (zadani/12 §4 — Reportable content). `review_dispute` je
+/// interní důvod pro formální spor hodnoceného nad recenzí (T037 § Main flow
+/// bod 6, `features/reviews/service.ts` → `disputeReview`) — NENÍ nabízený
+/// v obecném „Nahlásit" výběru (`GENERIC_REPORT_REASONS` ho vynechává),
+/// vzniká jen z vyhrazeného dispute flow, ne z volby uživatele.
 enum ReportReason {
   spam
   scam
@@ -1843,6 +1853,7 @@ enum ReportReason {
   copyright
   impersonation
   illegal_solicitation
+  review_dispute
 }
 
 /// Stav řešení reportu (zadani/12 §5). `triaged`/`under_review` jsou průběžné;
@@ -2032,4 +2043,81 @@ model MatchRecommendation {
   @@index([requestId])
   @@index([candidateUserId])
   @@map("match_recommendations")
+}
+
+// ---------------------------------------------------------------------------
+// Hodnocení (T037)
+//
+// Recenze podmíněná ověřenou interakcí (zadani/legacy-master-spec §36). Cíl je
+// polymorfní (profesionál/firma) stejným vzorem jako `RequestResponse.author*`
+// — DB CHECK v migraci vynucuje „právě jeden cíl". Evidence interakce je vždy
+// accepted `RequestResponse` (T027); unikátní FK zajišťuje jednu recenzi per
+// interakce (§ Validation — ochrana proti duplicitám). Spor a skrytí sdílí
+// moderační frontu s T036 (`ReportTargetType.review`).
+// ---------------------------------------------------------------------------
+
+/// Stav recenze (zadani/08 §6). `eligible`/`submitted` NEJSOU perzistované
+/// stavy — MVP nemá gating krok mezi odesláním a zveřejněním, recenze vzniká
+/// rovnou jako `published` (§ Main flow bod 2–3). `disputed` je vždy dál
+/// veřejně viditelná s příznakem (main flow bod 6); jen `hidden` se vyřadí
+/// z průměru i veřejného zobrazení (§ acceptance criteria).
+enum ReviewStatus {
+  published
+  disputed
+  hidden
+}
+
+/// Recenze profesionála/firmy. Kritéria (§36.2) jsou vlastní sloupce (ne JSON) —
+/// jsou to přesně definovaná pole, ne otevřený číselník jako u matching reasons.
+model Review {
+  id String @id @default(cuid())
+
+  /// Autor recenze = vlastník poptávky s ověřenou interakcí (eligibilita —
+  /// `evidenceResponse.status == accepted`). `SetNull` při smazání účtu —
+  /// recenze zůstává, zobrazí se anonymizovaně (§ Alternative flows —
+  /// „bývalý uživatel"), stejný vzor jako `RequestResponseAuditEntry.actorUser`.
+  reviewerUserId String?
+  reviewerUser   User?   @relation("ReviewsWritten", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+
+  /// Cíl = profesionál (uživatel). Právě jeden z cílových sloupců je vyplněný
+  /// (DB CHECK v migraci, stejný vzor jako `RequestResponse.author*`).
+  targetUserId String?
+  targetUser   User?         @relation("ReviewsReceivedByUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  /// Cíl = firma — reagovala-li na poptávku firma (T009), recenze cílí na ni.
+  targetOrgId  String?
+  targetOrg    Organization? @relation(fields: [targetOrgId], references: [id], onDelete: Cascade)
+
+  /// Evidence interakce (§ Preconditions — „reakce profesionála ve stavu
+  /// accepted"). Unikátní: jedna recenze per interakce.
+  evidenceResponseId String          @unique
+  evidenceResponse   RequestResponse @relation(fields: [evidenceResponseId], references: [id], onDelete: Cascade)
+
+  /// Kritéria §36.2, škála 1–5. Všechna povinná (validace v `service.ts`).
+  ratingCommunication   Int
+  ratingQuality         Int
+  ratingTimeliness      Int
+  ratingTransparency    Int
+  ratingProfessionalism Int
+
+  /// Volný text. Nepovinný, max délka řeší validace.
+  text String?
+
+  status ReviewStatus @default(published)
+
+  /// Právo na reakci (§36.3) — jedna veřejná odpověď hodnoceného.
+  replyText String?
+  repliedAt DateTime?
+
+  /// Spor hodnoceného (main flow bod 6). Recenze zůstává viditelná s příznakem
+  /// „rozporováno" (`disputedAt != null` řídí UI), dokud moderátor nerozhodne.
+  disputeReason String?
+  disputedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([targetUserId])
+  @@index([targetOrgId])
+  @@index([reviewerUserId])
+  @@map("reviews")
 }

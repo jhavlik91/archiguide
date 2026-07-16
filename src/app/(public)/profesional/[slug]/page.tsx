@@ -5,6 +5,7 @@ import { getPublicProfile } from "@/features/profiles/queries";
 import { isIndexable } from "@/features/profiles/public-view";
 import { listPublicPortfolioForUser } from "@/features/portfolio/queries";
 import { PublicProfile } from "@/features/profiles/components/public/public-profile";
+import { getReviewsForTarget } from "@/features/reviews/service";
 
 /**
  * T008 — veřejná stránka profesionála (`/profesional/[slug]`).
@@ -90,6 +91,12 @@ export default async function ProfessionalProfilePage({
   // Publikované projekty profesionála pro sekci Portfolio (T016).
   const projects = await listPublicPortfolioForUser(profile.userId);
 
+  // Hodnocení s ověřenou interakcí pro sekci Hodnocení (T037).
+  const reviews = await getReviewsForTarget({
+    type: "professional",
+    userId: profile.userId,
+  });
+
   return (
     <PublicProfile
       profile={profile}
@@ -97,6 +104,7 @@ export default async function ProfessionalProfilePage({
       isOwner={isOwner}
       isAuthenticated={isAuthenticated}
       projects={projects}
+      reviews={reviews}
     />
   );
 }

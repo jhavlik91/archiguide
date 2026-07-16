@@ -22,6 +22,13 @@ import type {
 } from "@/features/matching/types";
 import { listResponsesForRequest } from "@/features/responses/service";
 import { ResponseList } from "@/features/responses/components/response-list";
+import type { ResponseListItemForOwner } from "@/features/responses/types";
+import {
+  getReviewForResponse,
+  isReviewEditable,
+} from "@/features/reviews/service";
+import type { ReviewCtaState } from "@/features/reviews/components/review-cta";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * Detail poptávky pro vlastníka (`/requests/[requestId]`, T024). Vlastník/admin
@@ -57,6 +64,7 @@ export default async function RequestPage({
   const matches = await loadMatches(actor, view);
   // Vlastníkovo čtení nastaví `viewed` u dosud `sent` reakcí (T027 § Main flow #3).
   const responses = await listResponsesForRequest(requestId, actor.userId);
+  const reviewCtas = await loadReviewCtas(actor, view, responses);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -66,9 +74,53 @@ export default async function RequestPage({
         audit={audit}
         matches={matches}
       />
-      <ResponseList responses={responses} />
+      <ResponseList responses={responses} reviewCtas={reviewCtas} />
     </div>
   );
+}
+
+/**
+ * CTA hodnocení u accepted reakcí (T037 § Main flow bod 2) — jen pro
+ * VLASTNÍKA (recenzi smí založit jen on, adminovi by tlačítko stejně
+ * selhalo na oprávnění). Klíč v mapě = accepted reakce (CTA se zobrazí),
+ * hodnota = existující recenze pro režim úpravy, nebo `null` před založením.
+ */
+async function loadReviewCtas(
+  actor: Actor,
+  view: RequestView,
+  responses: ResponseListItemForOwner[],
+): Promise<Record<string, ReviewCtaState | null>> {
+  const isOwner = actor.kind === "user" && actor.userId === view.ownerUserId;
+  if (!isOwner) return {};
+
+  const entries = await Promise.all(
+    responses
+      .filter((response) => response.status === "accepted")
+      .map(async (response) => {
+        const review = await getReviewForResponse(response.id);
+        if (!review) {
+          trackEvent("review_eligible", {
+            requestId: view.id,
+            responseId: response.id,
+          });
+          return [response.id, null] as const;
+        }
+        return [
+          response.id,
+          {
+            id: review.id,
+            ratings: review.ratings,
+            text: review.text,
+            editable: isReviewEditable({
+              status: review.status,
+              createdAt: new Date(review.createdAt),
+            }),
+          },
+        ] as const;
+      }),
+  );
+
+  return Object.fromEntries(entries);
 }
 
 /** Náhled matching sekce (T029) — jen mimo draft (doporučení vznikají publikací). */

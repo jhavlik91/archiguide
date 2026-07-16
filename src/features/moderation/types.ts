@@ -31,7 +31,13 @@ export const REPORT_TARGET_TYPE_LABELS: Record<ReportTargetType, string> = {
 
 // --- Důvod ---------------------------------------------------------------
 
-/** Zadani/12 §4 — Reportable content. */
+/**
+ * Zadani/12 §4 — Reportable content. `review_dispute` je interní důvod pro
+ * formální spor hodnoceného nad recenzí (T037 § Main flow bod 6) — NENÍ
+ * v `GENERIC_REPORT_REASONS`, vzniká jen z vyhrazeného dispute flow
+ * (`features/reviews/service.ts` → `disputeReview`), ne z volby v obecném
+ * „Nahlásit" dialogu.
+ */
 export const REPORT_REASONS = [
   "spam",
   "scam",
@@ -41,6 +47,7 @@ export const REPORT_REASONS = [
   "copyright",
   "impersonation",
   "illegal_solicitation",
+  "review_dispute",
 ] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
 
@@ -53,7 +60,13 @@ export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   copyright: "Porušení autorských práv",
   impersonation: "Vydávání se za jiného",
   illegal_solicitation: "Nelegální nabídka",
+  review_dispute: "Spor o hodnocení (právo na reakci)",
 };
+
+/** Důvody nabízené v OBECNÉM „Nahlásit" dialogu (`ReportButton`) — vynechává
+ * `review_dispute`, který vzniká jen z vyhrazeného dispute flow (T037). */
+export const GENERIC_REPORT_REASONS: readonly ReportReason[] =
+  REPORT_REASONS.filter((r) => r !== "review_dispute");
 
 // --- Stav reportu ----------------------------------------------------------
 
@@ -195,6 +208,15 @@ export type TargetPreview =
       ownerUserId: string | null;
       title: string;
       href: string;
+    }
+  | {
+      kind: "review";
+      /** `null` po smazání účtu recenzenta (anonymizováno, T037 § Alternative flows). */
+      reviewerUserId: string | null;
+      /** Jméno/headline hodnoceného profesionála, nebo název firmy. */
+      targetLabel: string;
+      averageRating: number;
+      text: string | null;
     }
   | { kind: "unavailable" };
 

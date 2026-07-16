@@ -163,7 +163,7 @@ jednu doménu).
 
 - **Emit je best-effort:** selhání notifikace nikdy neshodí primární akci
   (odeslání zprávy apod.). **Vlastní akce nenotifikuje** (`actorUserId ===
-  recipient` → skip). Neznámý typ, zrušený příjemce i vypnutý kanál se tiše přeskočí.
+recipient` → skip). Neznámý typ, zrušený příjemce i vypnutý kanál se tiše přeskočí.
 - **Deduplikace:** dokud je notifikace **nepřečtená**, opakovaný emit se stejným
   `dedupeKey` jen zvýší počet a vrátí ji nahoru (5 zpráv v konverzaci = **1**
   nepřečtená notifikace s počtem ×5). Po přečtení vznikne nová.
@@ -261,6 +261,38 @@ Sekce „Doporučení profesionálové" na detailu vlastní poptávky
   kandidáta vůbec (`emptyReason` z T028, poctivé vysvětlení + doporučené
   kroky) vs. jednotlivá záložka je prázdná, protože všichni kandidáti jsou už
   jinde (např. všichni v užším výběru) — obojí dostane vlastní, konkrétní text.
+
+## Hodnocení s ověřenou interakcí (T037)
+
+Recenze profesionála/firmy může založit **jen vlastník poptávky s ověřenou
+interakcí** — přijatou (`accepted`) reakcí (T027). Jedna recenze na interakci
+(DB unikát na `evidenceResponseId`), 5 kritérií po 1–5 hvězdách (komunikace,
+kvalita, termíny, transparentnost, profesionalita) + volitelný text.
+Doména žije ve `features/reviews/`.
+
+- **Cíl je polymorfní** (`targetUserId` XOR `targetOrgId`, DB CHECK) — hodnotí
+  se autor přijaté reakce, tedy profesionál, nebo firma.
+- **Vzniká rovnou `published`** — stavy `eligible/submitted/moderation_pending`
+  ze spec diagramu nejsou perzistované (MVP nemá pre-moderaci); stavový automat
+  (`state-machine.ts`) řeší `published → disputed → published|hidden` a
+  `hidden → published` (restore).
+- **Editace jen 24 h od odeslání** (`isReviewEditable`), poté je recenze
+  zamčená. CTA „Ohodnotit spolupráci" je na detailu poptávky u accepted reakce.
+- **Právo na reakci (§36.3)**: hodnocený (profesionál, u firmy editor+) může
+  připojit JEDNU veřejnou odpověď a recenzi **rozporovat** — spor otevře případ
+  ve sdílené moderační frontě T036 (interní důvod `review_dispute`, který se v
+  obecném „Nahlásit" dialogu nikdy nenabízí). Rozporovaná recenze zůstává
+  veřejná s příznakem „Rozporováno".
+- **Moderace synchronizuje `Review.status`**: hide → `hidden` (vyřazena z
+  průměru i výpisu), dismiss sporu → zpět `published`, restore → `published`.
+  Moderace čte/píše `db.review` přímo (bez cyklického importu na reviews
+  service).
+- **Anonymita recenzenta**: zobrazuje se headline jeho profesního profilu,
+  jinak „Klient"; po smazání účtu „Bývalý uživatel" — nikdy e-mail/PII.
+- **Veřejné zobrazení**: sekce „Hodnocení" na profilu (T008) i firmě (T010) s
+  agregátem (celkový průměr + průměry kritérií, badge „Hodnocení z ověřených
+  spoluprací");
+  prázdná sekce se nezobrazuje.
 
 ## Požadavky
 

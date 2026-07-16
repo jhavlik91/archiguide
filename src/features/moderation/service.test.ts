@@ -8,7 +8,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  *  - reporter nemůže nahlásit vlastní obsah,
  *  - moderační akce vždy zapíše auditní záznam s důvodem a hide reálně skryje
  *    zprávu (zapíše do `Message.moderationState`),
- *  - vyřešený případ nejde vyřešit podruhé bez platného přechodu.
+ *  - vyřešený případ nejde vyřešit podruhé bez platného přechodu,
+ *  - nad recenzí (T037) hide/dismiss/restore synchronizuje `Review.status`
+ *    (hidden / disputed → published / published) a `own_content` blokuje
+ *    recenzenta, ne hodnoceného, který spor podává.
  */
 
 type ReportRow = {
@@ -52,6 +55,35 @@ type MessageRow = {
   createdAt: Date;
   moderationState: string;
 };
+type ReviewRow = {
+  id: string;
+  reviewerUserId: string | null;
+  targetUserId: string | null;
+  targetOrgId: string | null;
+  ratingCommunication: number;
+  ratingQuality: number;
+  ratingTimeliness: number;
+  ratingTransparency: number;
+  ratingProfessionalism: number;
+  text: string | null;
+  status: string;
+};
+
+function seedReview(): ReviewRow {
+  return {
+    id: "rev-1",
+    reviewerUserId: "reviewer-1",
+    targetUserId: "pro-1",
+    targetOrgId: null,
+    ratingCommunication: 5,
+    ratingQuality: 4,
+    ratingTimeliness: 5,
+    ratingTransparency: 4,
+    ratingProfessionalism: 5,
+    text: "Neodpovídá skutečnosti.",
+    status: "published",
+  };
+}
 
 let reports: ReportRow[] = [];
 let submissions: SubmissionRow[] = [];
@@ -67,6 +99,8 @@ let messages: MessageRow[] = [
     moderationState: "visible",
   },
 ];
+
+let reviews: ReviewRow[] = [seedReview()];
 
 let reportSeq = 0;
 let subSeq = 0;
@@ -114,6 +148,36 @@ const dbMockMethods = {
   professionalProfile: { findUnique: () => Promise.resolve(null) },
   portfolioProject: { findUnique: () => Promise.resolve(null) },
   request: { findUnique: () => Promise.resolve(null) },
+  review: {
+    findUnique: ({ where }: { where: { id: string } }) =>
+      Promise.resolve(reviews.find((r) => r.id === where.id) ?? null),
+    update: ({
+      where,
+      data,
+    }: {
+      where: { id: string };
+      data: { status: string };
+    }) => {
+      const row = reviews.find((r) => r.id === where.id);
+      if (!row) throw new Error("not found");
+      row.status = data.status;
+      return Promise.resolve(row);
+    },
+    updateMany: ({
+      where,
+      data,
+    }: {
+      where: { id: string; status?: string };
+      data: { status: string };
+    }) => {
+      const rows = reviews.filter(
+        (r) =>
+          r.id === where.id && (!where.status || r.status === where.status),
+      );
+      for (const row of rows) row.status = data.status;
+      return Promise.resolve({ count: rows.length });
+    },
+  },
   report: {
     findFirst: ({
       where,
@@ -342,8 +406,12 @@ vi.mock("@/features/notifications/emit", () => ({
   emit: vi.fn().mockResolvedValue({ status: "skipped", reason: "channel_off" }),
 }));
 
-const { reportContent, listReports, applyModerationAction } =
-  await import("./service");
+const {
+  reportContent,
+  listReports,
+  applyModerationAction,
+  restoreTargetVisibility,
+} = await import("./service");
 const { emit } = await import("@/features/notifications/emit");
 
 afterEach(() => {
@@ -361,6 +429,7 @@ afterEach(() => {
       moderationState: "visible",
     },
   ];
+  reviews = [seedReview()];
   vi.clearAllMocks();
 });
 
@@ -562,6 +631,109 @@ describe("applyModerationAction", () => {
         eventType: "moderation_action_taken",
         recipientUserId: "sender-1",
         reason: "Skryto kvůli obtěžování.",
+      }),
+    );
+  });
+});
+
+describe("moderace recenzí (T037) — synchronizace Review.status", () => {
+  /** Spor hodnoceného: report `review_dispute` + recenze ve stavu `disputed`. */
+  async function fileDispute() {
+    const result = await reportContent({
+      targetType: "review",
+      targetId: "rev-1",
+      reporterUserId: "pro-1",
+      reason: "review_dispute",
+      note: "Neodpovídá průběhu zakázky.",
+    });
+    if (!result.ok) throw new Error("expected ok");
+    reviews[0]!.status = "disputed";
+    return result.reportId;
+  }
+
+  it("recenzent nemůže nahlásit vlastní recenzi; hodnocený spor podat může", async () => {
+    const own = await reportContent({
+      targetType: "review",
+      targetId: "rev-1",
+      reporterUserId: "reviewer-1",
+      reason: "spam",
+      note: null,
+    });
+    expect(own).toEqual({ ok: false, reason: "own_content" });
+
+    const dispute = await reportContent({
+      targetType: "review",
+      targetId: "rev-1",
+      reporterUserId: "pro-1",
+      reason: "review_dispute",
+      note: "Neodpovídá průběhu zakázky.",
+    });
+    expect(dispute).toMatchObject({ ok: true, deduped: false });
+  });
+
+  it("content_hide skryje recenzi (Review.status = hidden) — resolve_hide", async () => {
+    const reportId = await fileDispute();
+    const result = await applyModerationAction({
+      reportId,
+      moderatorUserId: "mod-1",
+      actionType: "content_hide",
+      reason: "Recenze porušuje pravidla.",
+    });
+    expect(result).toEqual({ ok: true, state: "actioned" });
+    expect(reviews[0]!.status).toBe("hidden");
+  });
+
+  it("no_action nad sporem vrátí disputed → published — resolve_dismiss", async () => {
+    const reportId = await fileDispute();
+    const result = await applyModerationAction({
+      reportId,
+      moderatorUserId: "mod-1",
+      actionType: "no_action",
+      reason: "Spor neopodstatněný, recenze zůstává.",
+    });
+    expect(result).toEqual({ ok: true, state: "dismissed" });
+    expect(reviews[0]!.status).toBe("published");
+  });
+
+  it("no_action nad běžným reportem published recenze status nemění", async () => {
+    const filed = await reportContent({
+      targetType: "review",
+      targetId: "rev-1",
+      reporterUserId: "someone-else",
+      reason: "spam",
+      note: null,
+    });
+    if (!filed.ok) throw new Error("expected ok");
+    await applyModerationAction({
+      reportId: filed.reportId,
+      moderatorUserId: "mod-1",
+      actionType: "no_action",
+      reason: "Report neopodstatněný.",
+    });
+    expect(reviews[0]!.status).toBe("published");
+  });
+
+  it("restoreTargetVisibility vrátí skrytou recenzi na published — restore", async () => {
+    const reportId = await fileDispute();
+    await applyModerationAction({
+      reportId,
+      moderatorUserId: "mod-1",
+      actionType: "content_hide",
+      reason: "Recenze porušuje pravidla.",
+    });
+    expect(reviews[0]!.status).toBe("hidden");
+
+    await restoreTargetVisibility({
+      targetType: "review",
+      targetId: "rev-1",
+      moderatorUserId: "mod-2",
+    });
+    expect(reviews[0]!.status).toBe("published");
+    expect(flags).toContainEqual(
+      expect.objectContaining({
+        targetType: "review",
+        targetId: "rev-1",
+        state: "visible",
       }),
     );
   });

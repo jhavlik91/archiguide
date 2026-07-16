@@ -106,8 +106,19 @@ async function lookupTarget(
         ? { exists: true, ownerUserId: row.authorUserId }
         : { exists: false, ownerUserId: null };
     }
-    case "review":
-      return { exists: true, ownerUserId: null };
+    case "review": {
+      const row = await db.review.findUnique({
+        where: { id: targetId },
+        select: { reviewerUserId: true },
+      });
+      // Vlastník cíle = AUTOR recenze (kdo ji napsal) — `own_content` check tak
+      // správně blokuje jen recenzenta, ne hodnoceného, který recenzi rozporuje
+      // (`features/reviews/service.ts` → `disputeReview` volá tuto funkci
+      // s `reporterUserId` = hodnocený, typicky odlišný od recenzenta).
+      return row
+        ? { exists: true, ownerUserId: row.reviewerUserId }
+        : { exists: false, ownerUserId: null };
+    }
   }
 }
 
@@ -147,8 +158,27 @@ async function targetHref(
       });
       return row ? `/requests/${row.requestId}` : null;
     }
-    case "review":
-      return null;
+    case "review": {
+      const row = await db.review.findUnique({
+        where: { id: targetId },
+        select: { targetUserId: true, targetOrgId: true },
+      });
+      if (!row) return null;
+      if (row.targetUserId) {
+        const profile = await db.professionalProfile.findUnique({
+          where: { userId: row.targetUserId },
+          select: { slug: true },
+        });
+        return profile?.slug ? `/profesional/${profile.slug}` : null;
+      }
+      const org = row.targetOrgId
+        ? await db.organization.findUnique({
+            where: { id: row.targetOrgId },
+            select: { slug: true },
+          })
+        : null;
+      return org?.slug ? `/firma/${org.slug}` : null;
+    }
   }
 }
 
@@ -455,8 +485,53 @@ async function loadTargetPreview(
         href: `/requests/${row.requestId}`,
       };
     }
-    case "review":
-      return { kind: "unavailable" };
+    case "review": {
+      const row = await db.review.findUnique({
+        where: { id: targetId },
+        select: {
+          reviewerUserId: true,
+          targetUserId: true,
+          targetOrgId: true,
+          ratingCommunication: true,
+          ratingQuality: true,
+          ratingTimeliness: true,
+          ratingTransparency: true,
+          ratingProfessionalism: true,
+          text: true,
+        },
+      });
+      if (!row) return { kind: "unavailable" };
+
+      const targetLabel = row.targetUserId
+        ? ((
+            await db.professionalProfile.findUnique({
+              where: { userId: row.targetUserId },
+              select: { headline: true },
+            })
+          )?.headline?.trim() ?? "Profesionál")
+        : ((
+            await db.organization.findUnique({
+              where: { id: row.targetOrgId! },
+              select: { name: true },
+            })
+          )?.name ?? "Firma");
+
+      const average =
+        (row.ratingCommunication +
+          row.ratingQuality +
+          row.ratingTimeliness +
+          row.ratingTransparency +
+          row.ratingProfessionalism) /
+        5;
+
+      return {
+        kind: "review",
+        reviewerUserId: row.reviewerUserId,
+        targetLabel,
+        averageRating: Math.round(average * 10) / 10,
+        text: row.text,
+      };
+    }
   }
 }
 
@@ -626,7 +701,22 @@ export async function applyModerationAction(params: {
           where: { id: targetId },
           data: { moderationState: "hidden" },
         });
+      } else if (targetType === "review") {
+        // T037 state-machine `resolve_hide` (published|disputed → hidden).
+        await tx.review.update({
+          where: { id: targetId },
+          data: { status: "hidden" },
+        });
       }
+    } else if (targetType === "review") {
+      // Nezasahující rozřešení (dismiss/no_action/…) — pokud byla recenze
+      // rozporovaná, spor se zamítl a recenze zůstává zveřejněná (T037
+      // state-machine `resolve_dismiss`). Bez dispute je no-op (`updateMany`
+      // s filtrem na `disputed` nic nezmění).
+      await tx.review.updateMany({
+        where: { id: targetId, status: "disputed" },
+        data: { status: "published" },
+      });
     }
   });
 
@@ -687,6 +777,13 @@ export async function restoreTargetVisibility(params: {
       .catch(() => {
         // Zpráva mezitím mohla zaniknout (kaskáda smazaného účtu) — obnovení
         // stavu cíle je i tak platné (ModerationFlag výše se zapsal).
+      });
+  } else if (params.targetType === "review") {
+    // T037 state-machine `restore` (hidden → published).
+    await db.review
+      .update({ where: { id: params.targetId }, data: { status: "published" } })
+      .catch(() => {
+        // Recenze mezitím mohla zaniknout (kaskáda smazaného účtu/interakce).
       });
   }
 }

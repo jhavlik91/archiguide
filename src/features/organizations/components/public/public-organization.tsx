@@ -7,6 +7,8 @@ import { ORG_ROLE_LABELS } from "../../types";
 import type { PublicOrganizationView } from "../../queries";
 import type { PublicPortfolioCard } from "@/features/portfolio/queries";
 import { PortfolioProjectGrid } from "@/features/portfolio/components/public/portfolio-project-grid";
+import { ReviewSection } from "@/features/reviews/components/public/review-section";
+import type { ReviewAggregate, ReviewView } from "@/features/reviews/types";
 import { ExpandableText } from "./expandable-text";
 
 /** Iniciály pro logo-fallback (edge case: firma bez loga). */
@@ -50,10 +52,16 @@ function Chips({ items }: { items: string[] }) {
 export function PublicOrganization({
   org,
   projects = [],
+  reviews = null,
+  isEditor = false,
 }: {
   org: PublicOrganizationView;
   /** Publikované projekty firmy (T016 § Main flow #4). */
   projects?: PublicPortfolioCard[];
+  /** Hodnocení firmy (T037) — výsledek `getReviewsForTarget`. */
+  reviews?: { aggregate: ReviewAggregate; reviews: ReviewView[] } | null;
+  /** Je návštěvník editor+ firmy? Odemyká reply/dispute na recenzích (T037). */
+  isEditor?: boolean;
 }) {
   const hasContact =
     !!org.contact.email || !!org.contact.phone || !!org.contact.website;
@@ -153,6 +161,17 @@ export function PublicOrganization({
           {projects.length > 0 && (
             <Section title="Portfolio">
               <PortfolioProjectGrid projects={projects} />
+            </Section>
+          )}
+
+          {/* Hodnocení (T037) — jen s daty (prázdná sekce se nezobrazuje). */}
+          {reviews && reviews.reviews.length > 0 && (
+            <Section title="Hodnocení">
+              <ReviewSection
+                aggregate={reviews.aggregate}
+                reviews={reviews.reviews}
+                isOwner={isEditor}
+              />
             </Section>
           )}
 

@@ -20,7 +20,12 @@ export const NOTIFICATION_STATES = ["unread", "read"] as const;
 export type NotificationState = (typeof NOTIFICATION_STATES)[number];
 
 /** Doručovací kanály (zadani/11 — Kanály). V MVP se materializují `in_app` a `email`. */
-export const NOTIFICATION_CHANNELS = ["in_app", "email", "sms", "push"] as const;
+export const NOTIFICATION_CHANNELS = [
+  "in_app",
+  "email",
+  "sms",
+  "push",
+] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
 /**
@@ -35,6 +40,7 @@ export const NOTIFICATION_GROUPS = [
   "matching",
   "verification",
   "moderation",
+  "reviews",
 ] as const;
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
 
@@ -45,6 +51,7 @@ export const NOTIFICATION_GROUP_LABELS: Record<NotificationGroup, string> = {
   matching: "Doporučení",
   verification: "Verifikace účtu",
   moderation: "Moderace obsahu",
+  reviews: "Hodnocení",
 };
 
 /** Frekvence e-mailových notifikací (zadani/legacy-master-spec §28.2). */
@@ -74,18 +81,58 @@ export const EVENT_CATALOG = {
   // Messaging (T030)
   new_message: { priority: "normal", channels: ["in_app"], group: "messaging" },
   // Marketplace (T027 a dále)
-  new_response: { priority: "high", channels: ["in_app", "email"], group: "marketplace" },
-  response_viewed: { priority: "low", channels: ["in_app"], group: "marketplace" },
-  shortlisted: { priority: "normal", channels: ["in_app"], group: "marketplace" },
-  response_accepted: { priority: "high", channels: ["in_app", "email"], group: "marketplace" },
-  response_rejected: { priority: "normal", channels: ["in_app"], group: "marketplace" },
-  request_paused: { priority: "normal", channels: ["in_app"], group: "marketplace" },
-  request_closed: { priority: "normal", channels: ["in_app"], group: "marketplace" },
+  new_response: {
+    priority: "high",
+    channels: ["in_app", "email"],
+    group: "marketplace",
+  },
+  response_viewed: {
+    priority: "low",
+    channels: ["in_app"],
+    group: "marketplace",
+  },
+  shortlisted: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "marketplace",
+  },
+  response_accepted: {
+    priority: "high",
+    channels: ["in_app", "email"],
+    group: "marketplace",
+  },
+  response_rejected: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "marketplace",
+  },
+  request_paused: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "marketplace",
+  },
+  request_closed: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "marketplace",
+  },
   // Matching (T024+)
-  new_recommendation: { priority: "normal", channels: ["in_app"], group: "matching" },
-  recommended_request: { priority: "normal", channels: ["in_app"], group: "matching" },
+  new_recommendation: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "matching",
+  },
+  recommended_request: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "matching",
+  },
   // Verifikace (T011) — schválení/zamítnutí/vypršení jsou kritické servisní stavy účtu.
-  verification_pending: { priority: "low", channels: ["in_app"], group: "verification" },
+  verification_pending: {
+    priority: "low",
+    channels: ["in_app"],
+    group: "verification",
+  },
   verification_approved: {
     priority: "high",
     channels: ["in_app", "email"],
@@ -106,12 +153,33 @@ export const EVENT_CATALOG = {
   },
   // Moderace (T036) — zásah proti obsahu je kritická servisní zpráva (nejde
   // vypnout in-app preferencí); zpětná vazba reporterovi je běžná.
-  report_resolved: { priority: "low", channels: ["in_app"], group: "moderation" },
+  report_resolved: {
+    priority: "low",
+    channels: ["in_app"],
+    group: "moderation",
+  },
   moderation_action_taken: {
     priority: "high",
     channels: ["in_app"],
     group: "moderation",
     critical: true,
+  },
+  // Hodnocení (T037, zadani/11 — Reviews)
+  review_received: {
+    priority: "high",
+    channels: ["in_app", "email"],
+    group: "reviews",
+  },
+  review_reply: { priority: "normal", channels: ["in_app"], group: "reviews" },
+  review_disputed: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "reviews",
+  },
+  dispute_resolved: {
+    priority: "normal",
+    channels: ["in_app"],
+    group: "reviews",
   },
 } as const satisfies Record<string, EventDefinition>;
 
@@ -128,7 +196,9 @@ export type NotificationPreferences = {
   /** Globální zapnutí/vypnutí kanálu. */
   channels?: Partial<Record<NotificationChannel, boolean>>;
   /** Přepis per skupina (preferenční UI matice skupina × kanál, T033). */
-  groups?: Partial<Record<NotificationGroup, Partial<Record<NotificationChannel, boolean>>>>;
+  groups?: Partial<
+    Record<NotificationGroup, Partial<Record<NotificationChannel, boolean>>>
+  >;
   /** Přepis per typ události (nejvyšší přednost). */
   events?: Record<string, Partial<Record<NotificationChannel, boolean>>>;
   /** Frekvence e-mailového kanálu. Chybí-li, chová se jako `"immediate"`. */

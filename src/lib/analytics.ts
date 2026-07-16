@@ -116,7 +116,11 @@ export type AnalyticsEvent =
   | "response_viewed"
   | "response_shortlisted"
   | "response_accepted"
-  | "response_rejected";
+  | "response_rejected"
+  // Hodnocení s ověřenou interakcí (T037) — jména dle tasku (§ Analytics).
+  | "review_eligible"
+  | "review_submitted"
+  | "review_disputed";
 
 export function trackEvent(
   event: AnalyticsEvent,
