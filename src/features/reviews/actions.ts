@@ -166,9 +166,9 @@ export async function replyToReviewAction(
 
   const isOrgEditor = await resolveIsOrgEditor(
     actor.userId,
-    current.view.target,
+    current.target,
   );
-  if (!canReplyToReview(actor, { target: current.view.target, isOrgEditor })) {
+  if (!canReplyToReview(actor, { target: current.target, isOrgEditor })) {
     return {
       ok: false,
       error: "K odpovědi na toto hodnocení nemáte oprávnění.",
@@ -212,9 +212,9 @@ export async function disputeReviewAction(
 
   const isOrgEditor = await resolveIsOrgEditor(
     actor.userId,
-    current.view.target,
+    current.target,
   );
-  if (!canDisputeReview(actor, { target: current.view.target, isOrgEditor })) {
+  if (!canDisputeReview(actor, { target: current.target, isOrgEditor })) {
     return {
       ok: false,
       error: "K rozporování tohoto hodnocení nemáte oprávnění.",

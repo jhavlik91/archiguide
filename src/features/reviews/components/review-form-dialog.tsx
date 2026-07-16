@@ -16,7 +16,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { submitReviewAction, updateReviewAction } from "../actions";
-import { REVIEW_CRITERIA, REVIEW_CRITERION_LABELS, type ReviewRatings } from "../types";
+import {
+  REVIEW_CRITERIA,
+  REVIEW_CRITERION_LABELS,
+  REVIEW_TEXT_MAX_LENGTH,
+  type ReviewRatings,
+} from "../types";
 import { StarRatingInput } from "./star-rating";
 
 const DEFAULT_RATINGS: ReviewRatings = {
@@ -112,6 +117,7 @@ export function ReviewFormDialog({
               id="review-text"
               value={text}
               onChange={(e) => setText(e.target.value)}
+              maxLength={REVIEW_TEXT_MAX_LENGTH}
               placeholder="Popište, jak spolupráce probíhala…"
               rows={4}
             />

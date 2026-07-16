@@ -83,6 +83,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     professionalProfile: {
       findUnique: () => Promise.resolve(null),
+      findMany: () => Promise.resolve([]),
     },
     organization: {
       findUnique: () => Promise.resolve(null),

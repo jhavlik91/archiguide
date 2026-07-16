@@ -70,22 +70,46 @@ function ratingsOf(row: Review): ReviewRatings {
   };
 }
 
+/** Headline profesních profilů recenzentů jedním dotazem (výpis recenzí). */
+async function loadReviewerHeadlines(
+  reviewerUserIds: readonly (string | null)[],
+): Promise<Map<string, string>> {
+  const ids = [
+    ...new Set(reviewerUserIds.filter((id): id is string => id !== null)),
+  ];
+  if (ids.length === 0) return new Map();
+  const profiles = await db.professionalProfile.findMany({
+    where: { userId: { in: ids } },
+    select: { userId: true, headline: true },
+  });
+  return new Map(profiles.map((p) => [p.userId, p.headline ?? ""]));
+}
+
+/** Anonymita recenzenta: headline profesního profilu, jinak „Klient";
+ * po smazání účtu „Bývalý uživatel" — nikdy e-mail/PII. */
+function reviewerDisplayNameOf(
+  reviewerUserId: string | null,
+  headlines: Map<string, string>,
+): string {
+  if (!reviewerUserId) return "Bývalý uživatel";
+  return headlines.get(reviewerUserId)?.trim() || "Klient";
+}
+
 async function resolveReviewerDisplayName(
   reviewerUserId: string | null,
 ): Promise<string> {
-  if (!reviewerUserId) return "Bývalý uživatel";
-  const profile = await db.professionalProfile.findUnique({
-    where: { userId: reviewerUserId },
-    select: { headline: true },
-  });
-  return profile?.headline?.trim() || "Klient";
+  return reviewerDisplayNameOf(
+    reviewerUserId,
+    await loadReviewerHeadlines([reviewerUserId]),
+  );
 }
 
-async function toView(row: Review): Promise<ReviewView> {
+async function toView(row: Review, displayName?: string): Promise<ReviewView> {
   return {
     id: row.id,
     reviewerUserId: row.reviewerUserId,
-    reviewerDisplayName: await resolveReviewerDisplayName(row.reviewerUserId),
+    reviewerDisplayName:
+      displayName ?? (await resolveReviewerDisplayName(row.reviewerUserId)),
     target: targetRefOf(row),
     evidenceResponseId: row.evidenceResponseId,
     ratings: ratingsOf(row),
@@ -358,17 +382,11 @@ export async function updateReview(
 
 // --- Čtení -------------------------------------------------------------------
 
-export interface ReviewWithMeta {
-  view: ReviewView;
-  reviewerUserId: string | null;
-}
-
 export async function getReviewById(
   reviewId: string,
-): Promise<ReviewWithMeta | null> {
+): Promise<ReviewView | null> {
   const row = await db.review.findUnique({ where: { id: reviewId } });
-  if (!row) return null;
-  return { view: await toView(row), reviewerUserId: row.reviewerUserId };
+  return row ? toView(row) : null;
 }
 
 export async function getReviewForResponse(
@@ -457,7 +475,15 @@ export async function getReviewsForTarget(target: ReviewTargetRef): Promise<{
   const visibleRows = rows.filter((r) =>
     isPubliclyVisible(r.status as ReviewStatus),
   );
-  const reviews = await Promise.all(visibleRows.map((r) => toView(r)));
+  // Jména recenzentů jedním dotazem (ne per recenze).
+  const headlines = await loadReviewerHeadlines(
+    visibleRows.map((r) => r.reviewerUserId),
+  );
+  const reviews = await Promise.all(
+    visibleRows.map((r) =>
+      toView(r, reviewerDisplayNameOf(r.reviewerUserId, headlines)),
+    ),
+  );
 
   return { aggregate, reviews };
 }

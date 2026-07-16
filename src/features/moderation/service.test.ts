@@ -693,6 +693,20 @@ describe("moderace recenzí (T037) — synchronizace Review.status", () => {
     });
     expect(result).toEqual({ ok: true, state: "dismissed" });
     expect(reviews[0]!.status).toBe("published");
+    // Disputer dostane vyhrazený `dispute_resolved` (zadani/11 — Reviews),
+    // ne generický `report_resolved`.
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "dispute_resolved",
+        recipientUserId: "pro-1",
+      }),
+    );
+    expect(emit).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "report_resolved",
+        recipientUserId: "pro-1",
+      }),
+    );
   });
 
   it("no_action nad běžným reportem published recenze status nemění", async () => {

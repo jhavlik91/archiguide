@@ -732,9 +732,11 @@ export async function applyModerationAction(params: {
     reportId: report.id,
     targetType,
     targetId,
-    reporterUserIds: [
-      ...new Set(report.submissions.map((s) => s.reporterUserId)),
-    ],
+    // Unikát [reportId, reporterUserId] ⇒ jeden submission per reporter.
+    reporters: report.submissions.map((s) => ({
+      userId: s.reporterUserId,
+      reason: s.reason as ReportReason,
+    })),
     actionType: params.actionType,
     reason: params.reason,
     intervened: nextState === "actioned",
@@ -793,7 +795,7 @@ async function notifyResolution(params: {
   reportId: string;
   targetType: ReportTargetType;
   targetId: string;
-  reporterUserIds: string[];
+  reporters: { userId: string; reason: ReportReason }[];
   actionType: ModerationActionType;
   reason: string;
   intervened: boolean;
@@ -801,17 +803,28 @@ async function notifyResolution(params: {
   const href =
     (await targetHref(params.targetType, params.targetId)) ?? "/notifications";
 
-  // Reporteři: obecná zpětná vazba BEZ detailu akce.
+  // Reporteři: obecná zpětná vazba BEZ detailu akce. Hodnocený, který podal
+  // formální spor nad recenzí (T037 § Main flow bod 6), dostane vyhrazený
+  // `dispute_resolved` (zadani/11 — Reviews) místo generické zpětné vazby.
   await Promise.all(
-    params.reporterUserIds.map((reporterUserId) =>
-      emit({
-        eventType: "report_resolved",
-        recipientUserId: reporterUserId,
-        title: "Vaše nahlášení bylo vyřešeno",
-        reason: "Nahlásili jste obsah, který moderátor posoudil.",
-        link: href,
-        context: { type: "report", id: params.reportId },
-      }),
+    params.reporters.map(({ userId, reason }) =>
+      reason === "review_dispute"
+        ? emit({
+            eventType: "dispute_resolved",
+            recipientUserId: userId,
+            title: "Váš spor o hodnocení byl vyřešen",
+            reason: "Moderátor posoudil vaše rozporování recenze.",
+            link: href,
+            context: { type: "report", id: params.reportId },
+          })
+        : emit({
+            eventType: "report_resolved",
+            recipientUserId: userId,
+            title: "Vaše nahlášení bylo vyřešeno",
+            reason: "Nahlásili jste obsah, který moderátor posoudil.",
+            link: href,
+            context: { type: "report", id: params.reportId },
+          }),
     ),
   );
 
