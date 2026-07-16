@@ -8,6 +8,7 @@ import {
   User,
   Building2,
   Settings,
+  Send,
 } from "lucide-react";
 import { AppShell, type AppNavItem } from "@/components/layout/app-shell";
 import { auth } from "@/auth";
@@ -26,6 +27,7 @@ import { getNotificationCentre } from "@/features/notifications/queries";
 const NAV_ITEMS: AppNavItem[] = [
   { label: "Přehled", href: "/dashboard", icon: <LayoutDashboard /> },
   { label: "Poptávky", href: "/requests", icon: <Inbox /> },
+  { label: "Moje reakce", href: "/responses", icon: <Send /> },
   { label: "Zprávy", href: "/messages", icon: <MessageSquare /> },
   { label: "Notifikace", href: "/notifications", icon: <Bell /> },
   { label: "Portfolio", href: "/portfolio", icon: <FolderKanban /> },

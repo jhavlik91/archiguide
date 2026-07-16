@@ -8,6 +8,8 @@ import { canReadBrief } from "@/features/brief/permissions";
 import { getProfessionsBySlugs } from "@/features/taxonomy/queries";
 import { RequestDetail } from "@/features/requests/components/request-detail";
 import type { ProfessionOption } from "@/features/requests/components/request-detail";
+import { listResponsesForRequest } from "@/features/responses/service";
+import { ResponseList } from "@/features/responses/components/response-list";
 
 /**
  * Detail poptávky pro vlastníka (`/requests/[requestId]`, T024). Vlastník/admin
@@ -40,14 +42,17 @@ export default async function RequestPage({
   );
 
   const audit = await listRequestAudit(requestId);
+  // Vlastníkovo čtení nastaví `viewed` u dosud `sent` reakcí (T027 § Main flow #3).
+  const responses = await listResponsesForRequest(requestId, actor.userId);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl space-y-6">
       <RequestDetail
         request={view}
         professionOptions={professionOptions}
         audit={audit}
       />
+      <ResponseList responses={responses} />
     </div>
   );
 }
