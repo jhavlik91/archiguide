@@ -1,10 +1,12 @@
 /**
- * Stavový automat doporučení (T028 § States). Čistá vrstva (bez DB) — jediný
- * zdroj pravdy o povolených přechodech. Datová vrstva (`service.ts`) sem chodí
- * ověřit každý přechod; neplatný přechod se NIKDY neprovede.
+ * Stavový automat doporučení (T028 § States, rozšířeno T029 § Main flow bod 4
+ * — „dismiss je vratný"). Čistá vrstva (bez DB) — jediný zdroj pravdy o
+ * povolených přechodech. Datová vrstva (`service.ts`) sem chodí ověřit každý
+ * přechod; neplatný přechod se NIKDY neprovede.
  *
- * Diagram (§ States): `new → shown → shortlisted | dismissed`. Žádné zpětné
- * přechody v MVP — `shortlisted`/`dismissed` jsou terminální.
+ * Diagram: `new → shown → shortlisted | dismissed`, `dismissed → shown`
+ * (obnovení skrytého — jediný zpětný přechod v MVP). `shortlisted` zůstává
+ * terminální — shortlist se v tasku nikdy neruší, jen dismiss.
  */
 
 import type { MatchRecommendationStatus } from "./types";
@@ -17,13 +19,12 @@ export const MATCH_STATUS_TRANSITIONS: Record<
   new: ["shown"],
   shown: ["shortlisted", "dismissed"],
   shortlisted: [],
-  dismissed: [],
+  dismissed: ["shown"],
 };
 
 /** Terminální stavy — žádný další přechod. */
 export const TERMINAL_MATCH_STATUSES: readonly MatchRecommendationStatus[] = [
   "shortlisted",
-  "dismissed",
 ];
 
 /** Je stav terminální? */

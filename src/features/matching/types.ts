@@ -60,3 +60,33 @@ export interface MatchRecommendationView {
  */
 export const EMPTY_MATCH_REASONS = ["no_eligible_professionals"] as const;
 export type EmptyMatchReason = (typeof EMPTY_MATCH_REASONS)[number];
+
+// --- Kandidátní karta pro UI (T029) -----------------------------------------
+
+/** Ověřovací badge zobrazený na kartě (stejný tvar jako `features/search`). */
+export type MatchCandidateBadge = "phone" | "email";
+
+/** Jedna profese kandidáta na kartě. */
+export interface MatchCandidateProfession {
+  slug: string;
+  name: string;
+  isPrimary: boolean;
+}
+
+/**
+ * Veřejná data kandidáta pro kartu doporučení (jméno, profese, region,
+ * portfolio, ověření) — hydratovaná zvlášť od `MatchRecommendationView`, která
+ * nese jen `candidateUserId` (§ Main flow bod 1).
+ */
+export interface MatchCandidateCard {
+  candidateUserId: string;
+  slug: string;
+  headline: string;
+  professions: MatchCandidateProfession[];
+  location: string | null;
+  region: string | null;
+  bioSnippet: string | null;
+  portfolioCoverUrl: string | null;
+  publishedProjectCount: number;
+  badges: MatchCandidateBadge[];
+}

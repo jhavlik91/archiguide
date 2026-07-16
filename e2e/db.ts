@@ -279,3 +279,83 @@ export async function seedPublishedRequest(params: {
   });
   return row.id;
 }
+
+// --- Matching UI (T029) ------------------------------------------------------
+// Kandidátní karta potřebuje publikovaný profesionální profil (T007); přes
+// onboarding wizard by test byl zbytečně pomalý a křehký (viz `publishProfile`
+// helper v `professional-search.spec.ts`, který dělá přesně tohle přes UI, ale
+// pro jediný, přesně zadaný profil je přímý seed spolehlivější — stejný princip
+// jako `seedPublishedRequest` výše). Doporučení samotné seedujeme přímo —
+// engine (T028) má vlastní unit testy; tenhle test cílí na UI nad hotovým
+// doporučením, ne na přepočet.
+
+/** Založí (nebo aktualizuje) publikovaný profesionální profil s danou profesí. */
+export async function seedPublishedProfessionalProfile(params: {
+  userId: string;
+  slug: string;
+  headline: string;
+  professionSlug: string;
+  location?: string;
+}): Promise<void> {
+  const profession = await db.profession.findUniqueOrThrow({
+    where: { slug: params.professionSlug },
+  });
+  const profile = await db.professionalProfile.upsert({
+    where: { userId: params.userId },
+    create: {
+      userId: params.userId,
+      slug: params.slug,
+      headline: params.headline,
+      status: "published",
+      publishedAt: new Date(),
+      acceptingRequests: true,
+      location: params.location ?? null,
+    },
+    update: {
+      slug: params.slug,
+      headline: params.headline,
+      status: "published",
+      publishedAt: new Date(),
+      acceptingRequests: true,
+      location: params.location ?? null,
+    },
+  });
+  await db.profileProfession.upsert({
+    where: {
+      profileId_professionId: {
+        profileId: profile.id,
+        professionId: profession.id,
+      },
+    },
+    create: {
+      profileId: profile.id,
+      professionId: profession.id,
+      isPrimary: true,
+    },
+    update: { isPrimary: true },
+  });
+}
+
+/** Založí doporučení přímo (bez volání matching enginu — testuje se jen UI). */
+export async function seedMatchRecommendation(params: {
+  requestId: string;
+  candidateUserId: string;
+  reasons: { type: string; detail: string }[];
+}): Promise<string> {
+  const row = await db.matchRecommendation.upsert({
+    where: {
+      requestId_candidateUserId: {
+        requestId: params.requestId,
+        candidateUserId: params.candidateUserId,
+      },
+    },
+    create: {
+      requestId: params.requestId,
+      candidateUserId: params.candidateUserId,
+      score: 10,
+      reasons: params.reasons,
+    },
+    update: { reasons: params.reasons },
+  });
+  return row.id;
+}

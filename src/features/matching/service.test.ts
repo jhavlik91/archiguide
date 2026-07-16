@@ -77,6 +77,14 @@ let requests: ReqRow[] = [];
 let recommendations: Recommendation[] = [];
 let nextId = 1;
 
+// `service.ts` importuje `listPublicPortfolioForUser` (hydratace kandidátních
+// karet, T029), který transitivně sahá na `@/lib/session` (next-auth) — v
+// testovém prostředí bez Next runtime by ESM import spadl na chybějícím
+// `next/server`. Mock přerušuje řetězec stejně jako v `requests/service.test.ts`.
+vi.mock("@/lib/session", () => ({
+  getActor: () => Promise.resolve({ kind: "visitor" }),
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     request: {

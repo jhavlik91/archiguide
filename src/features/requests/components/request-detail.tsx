@@ -27,6 +27,12 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import type { PrivacyWarningKind } from "@/features/brief/privacy";
+import { RecommendationList } from "@/features/matching/components/recommendation-list";
+import type {
+  EmptyMatchReason,
+  MatchCandidateCard,
+  MatchRecommendationView,
+} from "@/features/matching/types";
 import {
   refineRequestAction,
   transitionRequestAction,
@@ -50,6 +56,13 @@ import { RequestPrivacyWarningDialog } from "./privacy-warning-dialog";
 export interface ProfessionOption {
   slug: string;
   name: string;
+}
+
+/** Náhled matching sekce (T029) — `null`, pokud poptávka ještě není publikovaná. */
+export interface RequestMatchesView {
+  recommendations: MatchRecommendationView[];
+  candidates: Record<string, MatchCandidateCard>;
+  emptyReason: EmptyMatchReason | null;
 }
 
 /** Popisky přechodů pro tlačítka (čeština). */
@@ -89,10 +102,12 @@ export function RequestDetail({
   request,
   professionOptions,
   audit,
+  matches,
 }: {
   request: RequestView;
   professionOptions: ProfessionOption[];
   audit: RequestAuditItem[];
+  matches: RequestMatchesView | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -167,6 +182,21 @@ export function RequestDetail({
           startTransition={startTransition}
         />
       )}
+
+      {/* Doporučení profesionálové (T029) — jen mimo draft (vzniká publikací). */}
+      {matches ? (
+        <Card>
+          <CardContent className="space-y-4 p-5 sm:p-6">
+            <p className="text-sm font-semibold">Doporučení profesionálové</p>
+            <RecommendationList
+              requestVisibility={request.visibility}
+              recommendations={matches.recommendations}
+              candidates={matches.candidates}
+              emptyReason={matches.emptyReason}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Stavové přechody. Publikace v draftu je uvnitř editoru (po uložení). */}
       {actions.length > 0 ? (

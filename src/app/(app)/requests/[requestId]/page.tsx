@@ -3,11 +3,23 @@ import type { Actor } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { getRequestById, listRequestAudit } from "@/features/requests/service";
 import { canReadRequest } from "@/features/requests/permissions";
+import type { RequestView } from "@/features/requests/types";
 import { getBriefById } from "@/features/brief/service";
 import { canReadBrief } from "@/features/brief/permissions";
 import { getProfessionsBySlugs } from "@/features/taxonomy/queries";
 import { RequestDetail } from "@/features/requests/components/request-detail";
 import type { ProfessionOption } from "@/features/requests/components/request-detail";
+import {
+  getRecommendations,
+  hydrateMatchCandidates,
+  markRecommendationsShown,
+} from "@/features/matching/service";
+import { canReadMatches } from "@/features/matching/permissions";
+import type {
+  EmptyMatchReason,
+  MatchCandidateCard,
+  MatchRecommendationView,
+} from "@/features/matching/types";
 import { listResponsesForRequest } from "@/features/responses/service";
 import { ResponseList } from "@/features/responses/components/response-list";
 
@@ -42,6 +54,7 @@ export default async function RequestPage({
   );
 
   const audit = await listRequestAudit(requestId);
+  const matches = await loadMatches(actor, view);
   // Vlastníkovo čtení nastaví `viewed` u dosud `sent` reakcí (T027 § Main flow #3).
   const responses = await listResponsesForRequest(requestId, actor.userId);
 
@@ -51,10 +64,46 @@ export default async function RequestPage({
         request={view}
         professionOptions={professionOptions}
         audit={audit}
+        matches={matches}
       />
       <ResponseList responses={responses} />
     </div>
   );
+}
+
+/** Náhled matching sekce (T029) — jen mimo draft (doporučení vznikají publikací). */
+async function loadMatches(
+  actor: Actor,
+  view: RequestView,
+): Promise<{
+  recommendations: MatchRecommendationView[];
+  candidates: Record<string, MatchCandidateCard>;
+  emptyReason: EmptyMatchReason | null;
+} | null> {
+  if (view.status === "draft") return null;
+  if (!canReadMatches(actor, { ownerUserId: view.ownerUserId })) return null;
+
+  const result = await getRecommendations(view.id);
+  if (!result.ok) return null;
+
+  // První zobrazení VLASTNÍKOVI = "shown" (§ States) — přesun se provede tady,
+  // při čtení stránky, ne z klienta. `canReadMatches` pustí i admina (support/
+  // moderace) — jeho čtení ale není „vlastník viděl doporučení", takže admin
+  // přechod nespouští (jinak by admin prohlídka tiše posunula stav i analytiku
+  // za vlastníka).
+  const isOwner = actor.kind === "user" && actor.userId === view.ownerUserId;
+  const recommendations = isOwner
+    ? await markRecommendationsShown(view.id, result.recommendations)
+    : result.recommendations;
+  const candidateMap = await hydrateMatchCandidates(
+    recommendations.map((r) => r.candidateUserId),
+  );
+
+  return {
+    recommendations,
+    candidates: Object.fromEntries(candidateMap),
+    emptyReason: result.emptyReason,
+  };
 }
 
 /** Sjednotí doporučené profese z briefu s aktuálně vybranými (slug → název). */

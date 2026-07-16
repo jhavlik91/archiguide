@@ -29,7 +29,7 @@ Akce validují vlastnictví poptávky a existenci doporučení.
 Vše jen vlastník poptávky; doporučení nejsou veřejná ani viditelná kandidátům.
 
 ## States
-Recommendation `shown → shortlisted | dismissed` (přechody přes engine API T028).
+Recommendation `shown → shortlisted | dismissed`, `dismissed → shown` (obnovení skrytého — jediný zpětný přechod, § Main flow bod 4). Přechody přes engine API (T028, rozšířeno o `restore`).
 
 ## Edge cases
 Mobil: karty pod sebou, důvod doporučení nezkrácený do nesrozumitelnosti; kandidát s omezenou dostupností → důvod to uvádí, karta není skrytá (`zadani/09-edge-cases.md` — Matching); pozvání téhož kandidáta dvakrát → idempotentní.
@@ -38,11 +38,11 @@ Mobil: karty pod sebou, důvod doporučení nezkrácený do nesrozumitelnosti; k
 Eventy: `match_shown`, `match_shortlisted`, `match_dismissed`, `match_profile_viewed`, `match_invited`.
 
 ## Acceptance criteria
-- [ ] E2E: publikovaná poptávka → seznam doporučení s důvody → shortlist → pozvání kandidáta.
-- [ ] Každá karta zobrazuje důvod doporučení; nikde se nezobrazuje procentní skóre.
-- [ ] Dismiss skryje kandidáta a lze jej vrátit.
-- [ ] Prázdný výsledek zobrazí vysvětlení a doporučené kroky, ne prázdnou stránku.
-- [ ] Komponenta karty umí vykreslit označení „Sponzorováno" (Storybook stav).
+- [x] E2E: publikovaná poptávka → seznam doporučení s důvody → shortlist → pozvání kandidáta.
+- [x] Každá karta zobrazuje důvod doporučení; nikde se nezobrazuje procentní skóre.
+- [x] Dismiss skryje kandidáta a lze jej vrátit.
+- [x] Prázdný výsledek zobrazí vysvětlení a doporučené kroky, ne prázdnou stránku.
+- [x] Komponenta karty umí vykreslit označení „Sponzorováno" (Storybook stav).
 
 ## Out of scope
 Engine a skórování (T028), messaging s kandidátem (T030), notifikace kandidátům (T032/T033), placené pozice (finální produkt).
