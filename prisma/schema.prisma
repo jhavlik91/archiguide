@@ -77,6 +77,8 @@ model User {
   reportSubmissions           ReportSubmission[] // T036 (podaná nahlášení)
   moderationActions           ModerationAction[] // T036 (moderátor provádějící akci)
   moderationFlagEdits         ModerationFlag[] // T036 (kdo naposledy změnil moderační stav cíle)
+  requestResponses            RequestResponse[] // T027 (autor reakce = uživatel)
+  requestResponseAuditEntries RequestResponseAuditEntry[] // T027 (aktér auditovaného přechodu reakce)
 
   @@map("users")
 }
@@ -431,6 +433,7 @@ model Organization {
   invitations       OrganizationInvitation[]
   portfolioProjects PortfolioProject[] // T012 (owner = organizace)
   mediaAssets       MediaAsset[] // T014 (owner = organizace)
+  requestResponses  RequestResponse[] // T027 (autor reakce = organizace)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -667,6 +670,9 @@ model PortfolioProject {
   /// Obsahové bloky DRAFT verze (T013). Publikace (T012) je zmrazí do
   /// `publishedSnapshot`; veřejná verze čte ze snapshotu, ne odsud.
   blocks    PortfolioBlock[]
+  /// Přiložení k reakcím na poptávky (T027) — jen `published` projekty se
+  /// smí přiložit (validace ve `features/requests/response-*`).
+  responseAttachments RequestResponsePortfolioItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1507,6 +1513,7 @@ model Request {
   auditEntries         RequestAuditEntry[]
   matchRecommendations MatchRecommendation[] // T028
   invites              RequestInvite[]
+  responses            RequestResponse[] // T027
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1574,6 +1581,137 @@ model RequestInvite {
   @@index([requestId])
   @@index([invitedUserId])
   @@map("request_invites")
+}
+
+// ---------------------------------------------------------------------------
+// Reakce profesionála na poptávku (T027)
+//
+// Uzavírá request-response smyčku (zadani/legacy-master-spec §20.4,
+// zadani/08-workflows-state-machines.md §4). Autor je polymorfní (uživatel
+// NEBO organizace) — stejný vzor jako `PortfolioProject.ownerUserId`/
+// `ownerOrgId` (permission matice — Firma admin/editor smí reagovat za firmu).
+// ---------------------------------------------------------------------------
+
+/// Stav reakce (zadani/08 §4). `viewed` nastavuje systém automaticky při
+/// prvním zobrazení vlastníkem poptávky (main flow bod 3) — actor je proto u
+/// tohoto přechodu vždy `null` v `RequestResponseAuditEntry`. Terminální stavy:
+/// `accepted`, `rejected`, `withdrawn`.
+///
+/// Diagram:
+///   draft → sent → viewed → shortlisted → accepted
+///   sent → withdrawn
+///   viewed → rejected
+///   shortlisted → rejected | withdrawn
+enum RequestResponseStatus {
+  draft
+  sent
+  viewed
+  shortlisted
+  accepted
+  rejected
+  withdrawn
+}
+
+/// Reakce profesionála (nebo firmy) na poptávku. Autor je právě jeden z
+/// `authorUserId`/`authorOrgId` (DB CHECK v migraci, stejný princip jako u
+/// portfolia). Jedna reakce per autor per poptávka (`@@unique` níže) —
+/// editovatelná dokud `sent`, pak už jen withdraw (main flow bod 4).
+model RequestResponse {
+  id String @id @default(cuid())
+
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Autor = profesionál (uživatel). Právě jeden z autorských sloupců.
+  authorUserId String?
+  authorUser   User?   @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  /// Autor = firma (T009) — „Firma admin"/„Firma editor" dle matice.
+  authorOrgId  String?
+  authorOrg    Organization? @relation(fields: [authorOrgId], references: [id], onDelete: Cascade)
+
+  status RequestResponseStatus @default(draft)
+
+  /// Zpráva vlastníkovi poptávky. Povinná (§ Validation).
+  message String
+
+  /// Cenový model — sdílí enum s `ProfessionalProfile.pricingModel` (T007),
+  /// stejné volby (hodinová/fixní/za projekt/na vyžádání). „Po konzultaci" ze
+  /// zadání (§20.4) mapuje na `on_request`.
+  priceModel PricingModel?
+  /// Doplňující poznámka k ceně (např. „od 1 500 Kč/h", „cena po prohlídce").
+  priceNote String?
+  /// Orientační termín / dostupnost — volný text (stejný princip jako
+  /// `Request.timeline`).
+  availability String?
+
+  /// Volitelný důvod odmítnutí (main flow bod 6). Pokud ho vlastník vyplní,
+  /// vidí ho i autor; jinak autor vidí jen stav `rejected` bez detailu.
+  rejectionReason String?
+
+  /// Kdy vlastník reakci poprvé zobrazil (main flow bod 3 — nastavuje se
+  /// automaticky při prvním čtení, ne akcí uživatele). `null` = dosud nezobrazeno.
+  viewedAt DateTime?
+
+  /// Přiložené vlastní portfolio projekty (jen `published` — validace v
+  /// `service.ts`; FK sem jen odkazuje na existující entitu).
+  portfolioItems RequestResponsePortfolioItem[]
+  auditEntries   RequestResponseAuditEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Jedna reakce per profesionál (resp. per firma) per poptávka (main flow
+  /// bod 4). Dva samostatné unikáty kvůli polymorfnímu autorovi — NULL sloupec
+  /// se v Postgres unique indexu nikdy nesrovnává, takže `authorOrgId IS NULL`
+  /// řádky (user-authored) navzájem nekolidují, a naopak.
+  @@unique([requestId, authorUserId])
+  @@unique([requestId, authorOrgId])
+  @@index([requestId])
+  @@index([authorUserId])
+  @@index([authorOrgId])
+  @@map("request_responses")
+}
+
+/// M:N mezi reakcí a přiloženým portfolio projektem autora (main flow bod 2).
+/// Na rozdíl od `Request.targetProfessionSlugs` (snapshot) jde o referenci na
+/// existující entitu — proto FK přes join tabulku, ne pole ID.
+model RequestResponsePortfolioItem {
+  id String @id @default(cuid())
+
+  responseId String
+  response   RequestResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  portfolioProjectId String
+  portfolioProject   PortfolioProject @relation(fields: [portfolioProjectId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, portfolioProjectId])
+  @@index([responseId])
+  @@index([portfolioProjectId])
+  @@map("request_response_portfolio_items")
+}
+
+/// Auditní záznam přechodu reakce (§ States — „auditní záznam accept/reject").
+/// Append-only, stejný vzor jako `RequestAuditEntry`.
+model RequestResponseAuditEntry {
+  id String @id @default(cuid())
+
+  responseId String
+  response   RequestResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  /// `SetNull` při smazání účtu — auditní stopa zůstává (stejný vzor jako
+  /// `RequestAuditEntry.actorUser`). `null` i pro systémový přechod `viewed`.
+  actorUserId String?
+  actorUser   User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  action String
+
+  fromStatus RequestResponseStatus?
+  toStatus   RequestResponseStatus
+
+  createdAt DateTime @default(now())
+
+  @@index([responseId, createdAt])
+  @@map("request_response_audit_entries")
 }
 
 // ---------------------------------------------------------------------------
@@ -1691,6 +1829,8 @@ enum ReportTargetType {
   request
   message
   review
+  /// Reakce na poptávku (T027 § Edge cases — "spam reakce → nahlásitelná").
+  request_response
 }
 
 /// Důvod nahlášení (zadani/12 §4 — Reportable content).

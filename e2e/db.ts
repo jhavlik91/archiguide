@@ -7,7 +7,12 @@ type Role = "client" | "professional" | "moderator" | "admin";
 
 /** Kopie číselníků moderace (T036, e2e nezávisí na alias importu z `src`). */
 type ReportTargetType =
-  "profile" | "portfolio_project" | "request" | "message" | "review";
+  | "profile"
+  | "portfolio_project"
+  | "request"
+  | "message"
+  | "review"
+  | "request_response";
 type ReportReason =
   | "spam"
   | "scam"

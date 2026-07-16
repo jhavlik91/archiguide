@@ -22,6 +22,11 @@ import {
   REQUEST_STATUS_LABELS,
   REQUEST_TYPE_LABELS,
 } from "@/features/requests/types";
+import { ResponseForm } from "@/features/responses/components/response-form";
+import {
+  getResponseForAuthor,
+  listOwnPublishedPortfolioItems,
+} from "@/features/responses/service";
 
 /**
  * Veřejná anonymizovaná projekce poptávky (`/poptavka/[requestId]`, T025
@@ -149,11 +154,11 @@ export default async function PublicRequestPage({
       ) : null}
 
       {!isManager ? (
-        <ResponseCta
-          requestId={requestId}
-          status={view.status}
-          isLoggedIn={actor.kind === "user"}
-        />
+        view.status === "active" && actor.kind === "user" ? (
+          <ResponseSection requestId={requestId} userId={actor.userId} />
+        ) : (
+          <ResponseCta requestId={requestId} status={view.status} />
+        )
       ) : null}
 
       <footer className="text-muted-foreground border-t pt-4 text-xs">
@@ -164,23 +169,45 @@ export default async function PublicRequestPage({
 }
 
 /**
- * CTA „Reagovat" (T026 § Main flow #4, slot pro T027). Nepřihlášený vede na
- * přihlášení (nikdy na chybu, § Acceptance criteria); přihlášený vidí tlačítko
- * deaktivované s vysvětlením — samotná reakce přijde s T027, poptávka mimo
- * `active` navíc reakce nepřijímá (Alternative flows).
+ * Reakce (T027) pro přihlášeného na `active` poptávku — vlastní formulář, nebo
+ * stav existující reakce (`ResponseForm` rozhoduje dle stavu). Portfolio k
+ * přiložení nabízí jen VLASTNÍ `published` projekty (§ Validation).
+ */
+async function ResponseSection({
+  requestId,
+  userId,
+}: {
+  requestId: string;
+  userId: string;
+}) {
+  const author = { type: "user" as const, userId };
+  const [existing, portfolioOptions] = await Promise.all([
+    getResponseForAuthor(requestId, author),
+    listOwnPublishedPortfolioItems(author),
+  ]);
+
+  return (
+    <ResponseForm
+      requestId={requestId}
+      existing={existing}
+      portfolioOptions={portfolioOptions}
+    />
+  );
+}
+
+/**
+ * CTA „Reagovat" pro nepřihlášeného nebo poptávku mimo `active` (T026 § Main
+ * flow #4). Nepřihlášený vede na přihlášení (nikdy na chybu, § Acceptance
+ * criteria); mimo `active` je CTA vždy deaktivované s vysvětlením, bez ohledu
+ * na přihlášení (Alternative flows — reakce mimo `active` nejde vůbec).
  */
 function ResponseCta({
   requestId,
   status,
-  isLoggedIn,
 }: {
   requestId: string;
   status: keyof typeof REQUEST_STATUS_LABELS;
-  isLoggedIn: boolean;
 }) {
-  // Stav má přednost před přihlášením: mimo `active` reagovat nejde vůbec
-  // (Alternative flows), takže i nepřihlášený vidí deaktivované CTA s
-  // vysvětlením, ne login odkaz, který by slibovat něco nesplnitelného.
   if (status !== "active") {
     return (
       <div className="space-y-2">
@@ -196,27 +223,13 @@ function ResponseCta({
     );
   }
 
-  if (!isLoggedIn) {
-    return (
-      <Button asChild>
-        <Link href={`/login?next=${encodeURIComponent(`/poptavka/${requestId}`)}`}>
-          <Send />
-          Reagovat na poptávku
-        </Link>
-      </Button>
-    );
-  }
-
   return (
-    <div className="space-y-2">
-      <Button disabled>
+    <Button asChild>
+      <Link href={`/login?next=${encodeURIComponent(`/poptavka/${requestId}`)}`}>
         <Send />
         Reagovat na poptávku
-      </Button>
-      <p className="text-muted-foreground text-sm">
-        Reakce na poptávky budou dostupné brzy.
-      </p>
-    </div>
+      </Link>
+    </Button>
   );
 }
 

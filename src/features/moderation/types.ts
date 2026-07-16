@@ -16,6 +16,7 @@ export const REPORT_TARGET_TYPES = [
   "request",
   "message",
   "review",
+  "request_response",
 ] as const;
 export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number];
 
@@ -25,6 +26,7 @@ export const REPORT_TARGET_TYPE_LABELS: Record<ReportTargetType, string> = {
   request: "Poptávka",
   message: "Zpráva",
   review: "Recenze",
+  request_response: "Reakce na poptávku",
 };
 
 // --- Důvod ---------------------------------------------------------------
@@ -187,6 +189,13 @@ export type TargetPreview =
       href: string | null;
     }
   | { kind: "request"; ownerUserId: string; title: string; href: string }
+  | {
+      kind: "request_response";
+      /** `null` u firemní reakce (org-authored — stejný princip jako portfolio). */
+      ownerUserId: string | null;
+      title: string;
+      href: string;
+    }
   | { kind: "unavailable" };
 
 /** Detail případu pro admin frontu: report + podání + akce + historie + náhled. */
