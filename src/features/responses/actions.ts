@@ -69,8 +69,9 @@ export async function submitResponseAction(
 
   // Doménový invariant: na vlastní poptávku se nereaguje. UI formulář vlastníkovi
   // vůbec nenabídne (`isManager` na veřejném detailu), server to ale musí
-  // vynutit i při přímém volání akce.
-  if (author.type === "user" && author.userId === meta.ownerUserId) {
+  // vynutit i při přímém volání akce — včetně reakce podané za organizaci
+  // (rozhoduje, KDO jedná, ne za koho).
+  if (actor.userId === meta.ownerUserId) {
     return { ok: false, error: "Na vlastní poptávku nelze reagovat." };
   }
 
