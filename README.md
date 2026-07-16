@@ -255,9 +255,8 @@ Sekce „Doporučení profesionálové" na detailu vlastní poptávky
 - **První zobrazení = „shown"**: server při čtení stránky (ne klient) posune
   čerstvá (`new`) doporučení do `shown` a zaznamená `match_shown`.
 - **Oslovit**: u neveřejné poptávky vytvoří reálný `RequestInvite` (T025,
-  idempotentní); u veřejné poptávky T027 „reakce na poptávku" ještě neexistuje,
-  takže UI místo předstírané akce nabídne jen odkaz na veřejnou stránku
-  poptávky.
+  idempotentní); u veřejné poptávky pozvánka není potřeba — UI nabídne odkaz
+  na veřejnou stránku poptávky, kde kandidát reaguje sám (T027).
 - **Prázdný stav** rozlišuje dvě situace: engine nenašel žádného vhodného
   kandidáta vůbec (`emptyReason` z T028, poctivé vysvětlení + doporučené
   kroky) vs. jednotlivá záložka je prázdná, protože všichni kandidáti jsou už

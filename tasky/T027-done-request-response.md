@@ -39,11 +39,11 @@ Reakce těsně po pause → srozumitelné odmítnutí (`zadani/09-edge-cases.md`
 Eventy: `response_sent`, `response_viewed`, `response_shortlisted`, `response_accepted`, `response_rejected` (viz `zadani/14-metrics-analytics.md`).
 
 ## Acceptance criteria
-- [ ] E2E: profesionál reaguje → vlastník vidí reakci (stav `viewed`) → shortlist → accept → poptávka `in_discussion`.
-- [ ] Unit testy stavového automatu reakce včetně neplatných přechodů.
-- [ ] Druhá reakce téhož profesionála na tutéž poptávku je odmítnuta.
-- [ ] Reakce na `paused` poptávku se nezaloží a uživatel dostane vysvětlení.
-- [ ] Přiložit lze jen vlastní published portfolio projekty.
+- [x] E2E: profesionál reaguje → vlastník vidí reakci (stav `viewed`) → shortlist → accept → poptávka `in_discussion`.
+- [x] Unit testy stavového automatu reakce včetně neplatných přechodů.
+- [x] Druhá reakce téhož profesionála na tutéž poptávku je odmítnuta.
+- [x] Reakce na `paused` poptávku se nezaloží a uživatel dostane vysvětlení.
+- [x] Přiložit lze jen vlastní published portfolio projekty.
 
 ## Out of scope
 Messaging (T030), notifikace (T032/T033), matching (T028), hodnocení po spolupráci (T037), lead fees/monetizace.

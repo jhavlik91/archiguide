@@ -77,9 +77,9 @@ const INVITABLE_REQUEST_STATUSES = new Set([
 /**
  * Osloví kandidáta u NEVEŘEJNÉ poptávky — vytvoří `RequestInvite` (§ Main flow
  * bod 3; idempotentní, opětovné pozvání stejného kandidáta se nerozbije).
- * U veřejné poptávky tuhle akci UI nevolá vůbec (odkazuje na veřejný profil /
- * CTA k reakci) — server by pozvánku sice založil, ale bez reálného využití
- * (T027 „reakce na poptávku" zatím neexistuje).
+ * U veřejné poptávky tuhle akci UI nevolá vůbec (odkazuje na veřejný detail
+ * poptávky, kde kandidát reaguje sám — T027) — pozvánka tam nemá reálné
+ * využití, na veřejnou poptávku smí reagovat každý profesionál i bez ní.
  */
 export async function inviteMatchCandidateAction(
   recommendationId: string,

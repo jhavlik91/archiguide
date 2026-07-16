@@ -20,6 +20,8 @@ import type {
   MatchCandidateCard,
   MatchRecommendationView,
 } from "@/features/matching/types";
+import { listResponsesForRequest } from "@/features/responses/service";
+import { ResponseList } from "@/features/responses/components/response-list";
 
 /**
  * Detail poptávky pro vlastníka (`/requests/[requestId]`, T024). Vlastník/admin
@@ -53,15 +55,18 @@ export default async function RequestPage({
 
   const audit = await listRequestAudit(requestId);
   const matches = await loadMatches(actor, view);
+  // Vlastníkovo čtení nastaví `viewed` u dosud `sent` reakcí (T027 § Main flow #3).
+  const responses = await listResponsesForRequest(requestId, actor.userId);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl space-y-6">
       <RequestDetail
         request={view}
         professionOptions={professionOptions}
         audit={audit}
         matches={matches}
       />
+      <ResponseList responses={responses} />
     </div>
   );
 }

@@ -110,7 +110,13 @@ export type AnalyticsEvent =
   // Moderace (T036, zadani/14 — Trust)
   | "report_created"
   | "report_actioned"
-  | "report_dismissed";
+  | "report_dismissed"
+  // Reakce profesionála na poptávku (T027) — jména dle tasku (§ Analytics).
+  | "response_sent"
+  | "response_viewed"
+  | "response_shortlisted"
+  | "response_accepted"
+  | "response_rejected";
 
 export function trackEvent(
   event: AnalyticsEvent,

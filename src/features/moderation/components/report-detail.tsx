@@ -196,7 +196,8 @@ function TargetPreviewCard({
         ) : null}
         {(preview.kind === "profile" ||
           preview.kind === "portfolio_project" ||
-          preview.kind === "request") && (
+          preview.kind === "request" ||
+          preview.kind === "request_response") && (
           <div className="text-sm">
             {preview.href ? (
               <Link href={preview.href} className="font-medium hover:underline">

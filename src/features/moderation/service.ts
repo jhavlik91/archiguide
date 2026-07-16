@@ -94,6 +94,18 @@ async function lookupTarget(
         ? { exists: true, ownerUserId: row.ownerUserId }
         : { exists: false, ownerUserId: null };
     }
+    case "request_response": {
+      const row = await db.requestResponse.findUnique({
+        where: { id: targetId },
+        select: { authorUserId: true },
+      });
+      // Firemní reakce (org-authored) nemá jednoho "vlastníka-uživatele" —
+      // self-report check se v tom případě neuplatní (stejný princip jako u
+      // org-owned portfolia).
+      return row
+        ? { exists: true, ownerUserId: row.authorUserId }
+        : { exists: false, ownerUserId: null };
+    }
     case "review":
       return { exists: true, ownerUserId: null };
   }
@@ -128,6 +140,13 @@ async function targetHref(
     }
     case "request":
       return `/requests/${targetId}`;
+    case "request_response": {
+      const row = await db.requestResponse.findUnique({
+        where: { id: targetId },
+        select: { requestId: true },
+      });
+      return row ? `/requests/${row.requestId}` : null;
+    }
     case "review":
       return null;
   }
@@ -417,6 +436,23 @@ async function loadTargetPreview(
         ownerUserId: row.ownerUserId,
         title: row.title,
         href: `/requests/${targetId}`,
+      };
+    }
+    case "request_response": {
+      const row = await db.requestResponse.findUnique({
+        where: { id: targetId },
+        select: {
+          authorUserId: true,
+          requestId: true,
+          request: { select: { title: true } },
+        },
+      });
+      if (!row) return { kind: "unavailable" };
+      return {
+        kind: "request_response",
+        ownerUserId: row.authorUserId,
+        title: `Reakce na poptávku „${row.request.title}"`,
+        href: `/requests/${row.requestId}`,
       };
     }
     case "review":
